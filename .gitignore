@@ -1,0 +1,16 @@
+# 构建产物
+build/
+mx.scratch/
+
+# IDE / 编辑器
+.vscode/
+.vs/
+.idea/
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+
+# 编译中间产物
+*.o
+*.d
