@@ -1,7 +1,7 @@
 /**
  ******************************************************************************
  * @file    mqtt_port.c
- * @brief   Paho MQTT å¹³å°ç§»æ¤å±‚å®ç° â€”â€” Timer(åŸºäºHAL tick) + Network(å¯¹æ¥ESP8266)
+ * @brief   Paho MQTT Æ½Ì¨ÒÆÖ²²ãÊµÏÖ ¡ª¡ª Timer(»ùÓÚHAL tick) + Network(¶Ô½ÓESP8266)
  ******************************************************************************
  */
 #include "module_cfg.h"
@@ -14,8 +14,15 @@
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
+/* Ä£¿é´òÓ¡£ºÊÜ PROTOCOL_MQTT_UART1_PRINTF_ENABLE ¿ª¹Ø¿ØÖÆ£¬¹Ø±Õºó±àÒëÎª¿Õ */
+#if PROTOCOL_MQTT_UART1_PRINTF_ENABLE && BSP_UART1_ENABLE
+#define MqttNet_Printf(fmt, ...)  BSP_UART1_Printf(fmt, ##__VA_ARGS__)
+#else
+#define MqttNet_Printf(fmt, ...)  ((void)0)
+#endif
+
 /* ==========================================================================
- *  Timer å®ç°ï¼ˆåŸºäº HAL_GetTickï¼Œå•ä½æ¯«ç§’ï¼‰
+ *  Timer ÊµÏÖ£¨»ùÓÚ HAL_GetTick£¬µ¥Î»ºÁÃë£©
  * ========================================================================== */
 
 void TimerInit(Timer *t)
@@ -48,16 +55,16 @@ int TimerLeftMS(Timer *t)
 }
 
 /* ==========================================================================
- *  Network å®ç°ï¼ˆå¯¹æ¥ ESP8266 AT æŒ‡ä»¤ï¼‰
+ *  Network ÊµÏÖ£¨¶Ô½Ó ESP8266 AT Ö¸Áî£©
  * ========================================================================== */
 
 /**
- * @brief  MQTT ç½‘ç»œè¯»ï¼šé˜»å¡è¯»å–ï¼Œæ”¯æŒéƒ¨åˆ†è¿”å›
- * @param  n          Networkå¯¹è±¡ï¼ˆæœªä½¿ç”¨ï¼ŒESP8266å…¨å±€å•è¿æ¥ï¼‰
- * @param  buf        æ¥æ”¶ç¼“å†²åŒº
- * @param  len        æœŸæœ›å­—èŠ‚æ•°
- * @param  timeout_ms è¶…æ—¶ï¼ˆæ¯«ç§’ï¼‰
- * @retval >0 å®é™…è¯»åˆ°çš„å­—èŠ‚æ•°ï¼ˆå¯èƒ½å°äºlenï¼‰ï¼›0 è¶…æ—¶æ— æ•°æ®ï¼›-1 è¿æ¥æ–­å¼€
+ * @brief  MQTT ÍøÂç¶Á£º×èÈû¶ÁÈ¡£¬Ö§³Ö²¿·Ö·µ»Ø
+ * @param  n          Network¶ÔÏó£¨Î´Ê¹ÓÃ£¬ESP8266È«¾Öµ¥Á¬½Ó£©
+ * @param  buf        ½ÓÊÕ»º³åÇø
+ * @param  len        ÆÚÍû×Ö½ÚÊı
+ * @param  timeout_ms ³¬Ê±£¨ºÁÃë£©
+ * @retval >0 Êµ¼Ê¶Áµ½µÄ×Ö½ÚÊı£¨¿ÉÄÜĞ¡ÓÚlen£©£»0 ³¬Ê±ÎŞÊı¾İ£»-1 Á¬½Ó¶Ï¿ª
  */
 static int esp8266_mqttread(Network *n, unsigned char *buf, int len, int timeout_ms)
 {
@@ -72,30 +79,33 @@ static int esp8266_mqttread(Network *n, unsigned char *buf, int len, int timeout
     got = BSP_ESP8266_TCPRead((uint8_t *)buf, (uint32_t)len, (uint32_t)timeout_ms);
 
     if (got == 0U) {
-        /* æ— æ•°æ®ï¼šåˆ¤æ–­æ˜¯è¶…æ—¶è¿˜æ˜¯æ–­å¼€ */
-        if (BSP_ESP8266_TCPIsAlive() != 0U) {
-            return 0;   /* è¿æ¥æ­£å¸¸ï¼Œåªæ˜¯æš‚æ—¶æ— æ•°æ® */
+        /* ÎŞÊı¾İ£ºÖ»²é¶Ï¿ª±êÖ¾£¨´¿ÄÚ´æ¶ÁÈ¡£¬²»·¢ AT ÃüÁî£©¡£
+           s_tcp_closed ÓÉ BSP_ESP8266_TCPRead ÄÚ²¿¼ì²âµ½ "CLOSED" Ê±ÖÃÎ»£¬
+           ²»ÔÚ MQTT ¶ş½øÖÆ½ÓÊÕÄ£Ê½ÏÂ·¢ AT+CIPSTATUS£¬±ÜÃâ¸ÉÈÅÊı¾İ½ÓÊÕºÍË¢ÆÁ¡£ */
+        if (BSP_ESP8266_IsTCPClosed() != 0U) {
+            return -1;      /* ÒÑ¼ì²âµ½¶Ï¿ª */
         }
-        return -1;      /* è¿æ¥å·²æ–­å¼€ */
+        return 0;           /* Á¬½ÓÕı³££¬Ö»ÊÇÔİÊ±ÎŞÊı¾İ */
     }
 
     return (int)got;
 }
 
 /**
- * @brief  MQTT ç½‘ç»œå†™ï¼šé€šè¿‡ ESP8266 TCP å‘é€æ•°æ®
- * @retval æˆåŠŸè¿”å› lenï¼›å¤±è´¥è¿”å› -1
+ * @brief  MQTT ÍøÂçĞ´£ºÍ¨¹ı ESP8266 TCP ·¢ËÍÊı¾İ
+ * @retval ³É¹¦·µ»Ø len£»Ê§°Ü·µ»Ø -1
  */
 static int esp8266_mqttwrite(Network *n, unsigned char *buf, int len, int timeout_ms)
 {
     (void)n;
-    (void)timeout_ms;   /* BSP_ESP8266_TCPSend å†…éƒ¨å·²æœ‰è¶…æ—¶æœºåˆ¶ */
+    (void)timeout_ms;   /* BSP_ESP8266_TCPSend ÄÚ²¿ÒÑÓĞ³¬Ê±»úÖÆ */
 
     if ((buf == NULL) || (len <= 0)) {
         return -1;
     }
 
     if (BSP_ESP8266_TCPSend((const uint8_t *)buf, (uint32_t)len) != ESP8266_OK) {
+        MqttNet_Printf("[MQTT-NET] mqttwrite FAILED len=%d (TCP send error, connection may be dead)\r\n", len);
         return -1;
     }
 
@@ -103,13 +113,13 @@ static int esp8266_mqttwrite(Network *n, unsigned char *buf, int len, int timeou
 }
 
 /**
- * @brief  å…³é—­ç½‘ç»œè¿æ¥ï¼ˆPahoåŒæ­¥å®¢æˆ·ç«¯æœªç›´æ¥è°ƒç”¨ï¼Œä¿ç•™ä¾›åº”ç”¨å±‚ä½¿ç”¨ï¼‰
+ * @brief  ¹Ø±ÕÍøÂçÁ¬½Ó£¨PahoÍ¬²½¿Í»§¶ËÎ´Ö±½Óµ÷ÓÃ£¬±£Áô¹©Ó¦ÓÃ²ãÊ¹ÓÃ£©
  */
 static void esp8266_disconnect(Network *n)
 {
     (void)n;
-    /* ESP8266 å•è¿æ¥æ¨¡å¼ä¸‹å¯å‘ AT+CIPCLOSEï¼Œæ­¤å¤„ç®€åŒ–ä¸ºæ ‡è®°æ–­å¼€ï¼Œ
-     * é‡è¿æ—¶ BSP_ESP8266_TCPConnect ä¼šé‡æ–° CIPSTART */
+    /* Êµ¼Ê¹Ø±Õ TCP Á¬½Ó£¬ÉèÖÃ¶Ï¿ª±êÖ¾£¬ÖØÁ¬Ê± mqtt_full_connect »áÖØĞÂ½¨Á¬ */
+    (void)BSP_ESP8266_TCPClose();
 }
 
 void NetworkInit(Network *n)
@@ -120,11 +130,11 @@ void NetworkInit(Network *n)
 }
 
 /**
- * @brief  å»ºç«‹ TCP è¿æ¥åˆ° MQTT Brokerï¼Œå¹¶åˆ‡æ¢åˆ° MQTT äºŒè¿›åˆ¶æ¥æ”¶æ¨¡å¼
- * @param  n    Networkå¯¹è±¡
- * @param  host æœåŠ¡å™¨åœ°å€ï¼ˆæ”¯æŒåŸŸåï¼ŒESP8266 AT+CIPSTART å†…éƒ¨è§£æï¼‰
- * @param  port ç«¯å£å·
- * @retval 0 æˆåŠŸï¼›-1 å¤±è´¥
+ * @brief  ½¨Á¢ TCP Á¬½Óµ½ MQTT Broker£¬²¢ÇĞ»»µ½ MQTT ¶ş½øÖÆ½ÓÊÕÄ£Ê½
+ * @param  n    Network¶ÔÏó
+ * @param  host ·şÎñÆ÷µØÖ·£¨Ö§³ÖÓòÃû£¬ESP8266 AT+CIPSTART ÄÚ²¿½âÎö£©
+ * @param  port ¶Ë¿ÚºÅ
+ * @retval 0 ³É¹¦£»-1 Ê§°Ü
  */
 int NetworkConnect(Network *n, char *host, int port)
 {
@@ -138,7 +148,7 @@ int NetworkConnect(Network *n, char *host, int port)
         return -1;
     }
 
-    /* TCP è¿æ¥æˆåŠŸåï¼Œç«‹å³åˆ‡æ¢åˆ° MQTT äºŒè¿›åˆ¶æ¥æ”¶æ¨¡å¼ï¼ˆä¸è¿½åŠ \nï¼‰ */
+    /* TCP Á¬½Ó³É¹¦ºó£¬Á¢¼´ÇĞ»»µ½ MQTT ¶ş½øÖÆ½ÓÊÕÄ£Ê½£¨²»×·¼Ó\n£© */
     BSP_ESP8266_EnterMQTTMode();
 
     return 0;

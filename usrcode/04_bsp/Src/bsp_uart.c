@@ -1,4 +1,4 @@
-/**
+﻿/**
  ******************************************************************************
  * @file    bsp_uart.c
  * @brief   UART板级驱动实现 — UART1/UART3 DMA循环接收 + IDLE判帧 + 软件环形缓冲
@@ -167,7 +167,10 @@ void BSP_UART1_Printf(const char *fmt, ...)
         if (n >= (int)sizeof(buf)) {
             n = (int)sizeof(buf) - 1;
         }
-        BSP_UART1_Send((const uint8_t *)buf, (uint32_t)n);
+        /* 过滤：只保留 WiFi/MQTT/ESP8266 相关打印 */
+        if (strstr(buf, "MQTT") != NULL || strstr(buf, "WiFi") != NULL || strstr(buf, "ESP8266") != NULL || strstr(buf, "ALARM] Temp") != NULL) {
+            BSP_UART1_Send((const uint8_t *)buf, (uint32_t)n);
+        }
     }
 }
 

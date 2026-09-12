@@ -14,3 +14,8 @@ Desktop.ini
 # 编译中间产物
 *.o
 *.d
+
+# 调试/临时文件
+.diag/
+chk_at.png
+docs_check_image.png

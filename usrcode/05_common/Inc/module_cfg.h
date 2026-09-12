@@ -100,6 +100,11 @@
 /* ========== 调试开关 ========== */
 #define APP_HEX_CMD_DEBUG       0   /* hex帧调试打印：收到/发送hex帧时以十六进制文本打印到串口1（调试用，正式版关闭避免干扰二进制通信） */
 
+/* ========== MQTT/ESP8266 module printf switches (merged from v2.2a) ========== */
+#define BSP_ESP8266_UART1_PRINTF_ENABLE  1   /* BSP ESP8266 AT command printf */
+#define APP_MQTT_UART1_PRINTF_ENABLE     1   /* APP MQTT cloud task printf */
+#define PROTOCOL_MQTT_UART1_PRINTF_ENABLE 1  /* protocol layer mqtt_port printf */
+
 /* ========== 各模块 LED 控制独立开关 ==========
  *  仅控制对应模块是否执行 LED 动作，不影响 LED 驱动本身（BSP_LED_ENABLE）。
  *  关闭后该模块仍正常运行（采集/打印/扫描），只是不操作 LED。

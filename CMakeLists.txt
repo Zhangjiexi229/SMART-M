@@ -42,13 +42,15 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
-# usrcode 各层源文件自动收集
-file(GLOB COMMON_SOURCES   CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/Common/Src/*.c")
-file(GLOB PROTOCOL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/Protocol/Src/*.c")
-file(GLOB BSP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/BSP/Src/*.c")
-file(GLOB APP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/APP/Src/*.c")
+# usrcode 各层源文件自动收�?
+file(GLOB COMMON_SOURCES   CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/05_common/Src/*.c")
+file(GLOB PROTOCOL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/protocol/Src/*.c")
+file(GLOB PLAT_SOURCES     CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/03_plat/Src/*.c")
+file(GLOB SVC_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/02_svc/Src/*.c")
+file(GLOB BSP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/04_bsp/Src/*.c")
+file(GLOB APP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/Src/*.c")
 
-# Paho MQTT Embedded C —— 仅编译客户端需要的文件（排除*Server.c服务端和MQTTFormat工具）
+# Paho MQTT Embedded C —�?仅编译客户端需要的文件（排�?Server.c服务端和MQTTFormat工具�?
 set(PAHO_MQTT_PACKET_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTPacket/src/MQTTPacket.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTPacket/src/MQTTConnectClient.c"
@@ -61,16 +63,16 @@ set(PAHO_MQTT_CLIENT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTClient-C/src/MQTTClient.c"
 )
 
-# FreeModbus 主从一体（RTU模式）
-# FreeModbus 主从一体(RTU模式) - F407VET6新板适配: APP_MODBUS_ENABLE=0 暂停编译
-# (PB1 被板载 LCD 背光上拉 R13 15K 占用; 毕设主线为 MQTT 云)
+# FreeModbus 主从一体（RTU模式�?
+# FreeModbus 主从一�?RTU模式) - F407VET6新板适配: APP_MODBUS_ENABLE=0 暂停编译
+# (PB1 被板�?LCD 背光上拉 R13 15K 占用; 毕设主线�?MQTT �?
 set(FREEMODBUS_SOURCES
     "")
 
 
-# Paho MQTTClient.h 通过 MQTTCLIENT_PLATFORM_HEADER 宏自动包含平台头文件，
-# 以获取 Timer 和 Network 类型定义。仅给 paho 源文件添加此宏，
-# 避免影响工程其他文件。mqtt_port.h 在 Protocol/Inc 中，已在 include path 里。
+# Paho MQTTClient.h 通过 MQTTCLIENT_PLATFORM_HEADER 宏自动包含平台头文件�?
+# 以获�?Timer �?Network 类型定义。仅�?paho 源文件添加此宏，
+# 避免影响工程其他文件。mqtt_port.h �?Protocol/Inc 中，已在 include path 里�?
 set_source_files_properties(
     ${PAHO_MQTT_PACKET_SOURCES}
     ${PAHO_MQTT_CLIENT_SOURCES}
@@ -83,6 +85,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     ${COMMON_SOURCES}
     ${PROTOCOL_SOURCES}
+    ${PLAT_SOURCES}
+    ${SVC_SOURCES}
     ${BSP_SOURCES}
     ${APP_SOURCES}
     ${PAHO_MQTT_PACKET_SOURCES}
@@ -95,10 +99,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/Common/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/Protocol/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/BSP/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/APP/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/05_common/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/protocol/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/03_plat/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/02_svc/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/04_bsp/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTPacket/src
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTClient-C/src
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/freemodbus/modbus/include
