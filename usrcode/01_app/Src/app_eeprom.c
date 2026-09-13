@@ -27,7 +27,7 @@ static const app_config_t s_default_config = {
     .crc                = 0U,
 
     /* 网络配置默认值 */
-    .wifi_ssid          = "your_wifi_ssid",
+    .wifi_ssid          = "LAPTOP-2EPLM3P0 2316",
     .wifi_password      = "your_wifi_password",
     .tcp_server_ip      = "192.168.168.3",
     .tcp_server_port    = 8080U,

@@ -11,6 +11,9 @@
  ******************************************************************************
  */
 #include "module_cfg.h"
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
 #include "app_sht30.h"
 #include "cmsis_os.h"
 
@@ -55,6 +58,10 @@ void APP_SHT30_Task(void *argument)
     BSP_UART1_Printf("[SHT30] >> after osDelay, first read\r\n");
 
     for (;;) {
+#if APP_WATCHDOG_ENABLE
+    Watchdog_Kick(WDT_TASK_SHT30);  /* 心跳：任务存活标记 */
+#endif
+
         /* 1. 读取SHT30，失败重试 */
         ok = 0U;
         for (retry = 0U; retry < SHT30_RETRY_COUNT; retry++) {

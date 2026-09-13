@@ -49,7 +49,7 @@
 | 实例类型 | 基础版（basic instance） |
 | 区域 | 华北-北京四（cn-north-4） |
 | 免费额度 | 1000 设备注册、10000 条消息/日、10 TPS |
-| 接入地址 | `your_mqtt_address.iot-mqtts.cn-north-4.myhuaweicloud.com` |
+| 接入地址 | `your_endpoint.iotda-device.cn-north-4.myhuaweicloud.com` |
 | 非加密端口 | 1883 |
 | 加密端口 | 8883（MQTTS/TLS，本实验未使用） |
 
@@ -107,7 +107,7 @@
 | 认证类型 | 密钥（自动生成） |
 
 注册成功后保存：
-- **device_id**：`your_device_id`
+- **device_id**：`stm32_devID01`
 - **device_secret**：`your_device_secret`
 
 ### 3.5 生成 MQTT 鉴权参数
@@ -119,23 +119,23 @@
 |---|---|
 | 认证类型 | 密钥认证 |
 | 密码签名类型 | **不校验时间戳**（嵌入式设备无 RTC，选此项生成一次永久有效） |
-| DeviceId | `your_device_id` |
+| DeviceId | `stm32_devID01` |
 | DeviceSecret | `your_device_secret` |
 
 生成结果：
 
 | MQTT 参数 | 值 |
 |---|---|
-| ClientId | `your_client_id` |
-| Username | `your_device_id` |
-| Password | `your_mqtt_password` |
+| ClientId | `stm32_devID01_0_0_2026090319` |
+| Username | `stm32_devID01` |
+| Password | `your_password` |
 
 > **关键说明**：Password 不是 device_secret 明文，而是用 device_secret 对 clientId 做 HMAC-SHA256 签名后的 64 位十六进制字符串。直接填 device_secret 会连接失败（rc=-1）。
 
 ### 3.6 获取接入地址
 
 控制台"总览" → "接入信息" → 复制 MQTT 接入域名：
-`your_mqtt_address.iot-mqtts.cn-north-4.myhuaweicloud.com`
+`your_endpoint.iotda-device.cn-north-4.myhuaweicloud.com`
 
 > **非加密接入**：域名保持不变，端口从 8883 改为 1883。**不要**把域名中的 `iot-mqtts` 改成 `iot-mqtt`（该域名不存在，会导致 DNS 解析失败）。
 
@@ -151,15 +151,15 @@
 #define MQTT_WIFI_PASSWORD    "mo12345678"
 
 /* --- 华为云 IoTDA 接入参数 --- */
-#define MQTT_BROKER_HOST      "your_mqtt_address.iot-mqtts.cn-north-4.myhuaweicloud.com"
+#define MQTT_BROKER_HOST      "your_endpoint.iotda-device.cn-north-4.myhuaweicloud.com"
 #define MQTT_BROKER_PORT      1883U
-#define MQTT_CLIENT_ID        "your_client_id"
-#define MQTT_USERNAME         "your_device_id"
-#define MQTT_PASSWORD         "your_mqtt_password"
+#define MQTT_CLIENT_ID        "stm32_devID01_0_0_2026090319"
+#define MQTT_USERNAME         "stm32_devID01"
+#define MQTT_PASSWORD         "your_password"
 #define MQTT_KEEPALIVE_SEC    60U
 
 /* --- 华为云物模型 --- */
-#define HUAWEI_DEVICE_ID      "your_device_id"
+#define HUAWEI_DEVICE_ID      "stm32_devID01"
 #define HUAWEI_SERVICE_ID     "Sensor"
 
 /* --- 运行参数 --- */
@@ -177,9 +177,9 @@
 
 | 方向 | 主题 | 说明 |
 |---|---|---|
-| 设备→云（发布） | `$oc/devices/your_device_id/sys/properties/report` | 属性上报 |
-| 云→设备（订阅） | `$oc/devices/your_device_id/sys/commands/#` | 命令下发（#通配 request_id） |
-| 设备→云（发布） | `$oc/devices/your_device_id/sys/commands/response/request_id={rid}` | 命令响应 |
+| 设备→云（发布） | `$oc/devices/stm32_devID01/sys/properties/report` | 属性上报 |
+| 云→设备（订阅） | `$oc/devices/stm32_devID01/sys/commands/#` | 命令下发（#通配 request_id） |
+| 设备→云（发布） | `$oc/devices/stm32_devID01/sys/commands/response/request_id={rid}` | 命令响应 |
 
 ### 4.2 数据格式
 
@@ -234,13 +234,13 @@
 
 **串口输出（115200）**：
 ```
-[MQTT] Task started, broker=your_mqtt_address.iot-mqtts.cn-north-4.myhuaweicloud.com:1883
+[MQTT] Task started, broker=your_endpoint.iotda-device.cn-north-4.myhuaweicloud.com:1883
 [MQTT] ===== Connecting to Huawei Cloud =====
 [MQTT] AT test... AT OK
 [MQTT] Joining AP "spring" ... WiFi connected
 [MQTT] TCP connecting ... TCP connected
-[MQTT] MQTT connected (client=your_client_id)
-[MQTT] Subscribed to "$oc/devices/your_device_id/sys/commands/#" (QoS=0)
+[MQTT] MQTT connected (client=stm32_devID01_0_0_2026090319)
+[MQTT] Subscribed to "$oc/devices/stm32_devID01/sys/commands/#" (QoS=0)
 [MQTT] ===== All connected, start publishing =====
 [MQTT] Published: {"services":[{"service_id":"Sensor","properties":{"temperature":28.2,"humidity":52.0}}]}
 ```
@@ -703,7 +703,7 @@ Paho 原版代码中 `enum QoS` 因包含 `SUBFAIL=0x80` 被 GCC 压缩为 1 字
 
 串口日志：
 ```
-[MQTT] RECV topic=$oc/devices/your_device_id/sys/commands/request_id=b57bf32b-...
+[MQTT] RECV topic=$oc/devices/stm32_devID01/sys/commands/request_id=b57bf32b-...
 [MQTT] payload: {"paras":{"led":1},"service_id":"Sensor","command_name":"LED_Control"}
 [MQTT-CMD] Huawei command: LED_Control, led=1
 [MQTT] Command response sent (request_id=b57bf32b-...)

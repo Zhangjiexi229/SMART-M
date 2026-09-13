@@ -5,6 +5,9 @@
  ******************************************************************************
  */
 #include "module_cfg.h"
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
 #if APP_KEY_MATRIX_ENABLE && APP_TASKS_ENABLE
 
 #include "app_key_matrix.h"
@@ -157,6 +160,10 @@ void APP_KeyMatrix_Task(void *argument)
                      (unsigned)KEYM_PERIOD_MS, (unsigned)KEYM_DEBOUNCE_COUNT);
 
     for (;;) {
+#if APP_WATCHDOG_ENABLE
+    Watchdog_Kick(WDT_TASK_KEY_MATRIX);  /* 心跳：任务存活标记 */
+#endif
+
         uint8_t key = BSP_KeyMatrix_Scan();
 
         if (key == 0U) {

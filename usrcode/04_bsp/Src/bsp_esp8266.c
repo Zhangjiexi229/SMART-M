@@ -72,12 +72,15 @@ static uint32_t s_mqtt_tail;   /* 写指针 */
 
 /* TCP 断开标志：TCPRead 检测到 CLOSED 时置位，供 mqttread 快速判断，避免频繁发 AT+CIPSTATUS */
 static uint8_t  s_tcp_closed = 0U;
+/* WiFi link-lost flag: set when async "WIFI DISCONNECT"/"WIFI CONNECT FAIL" event received */
+static uint8_t  s_wifi_closed = 0U;
 
 /* ==========================================================================
  *  内部辅助函数
  * ========================================================================== */
 
 static void esp8266_scan_ipd(void);   /* +IPD 包扫描与数据提取（在 pump_rx 中调用） */
+static uint8_t esp8266_mem_contains(const uint8_t *buf, uint32_t buf_len, const char *kw);
 
 /**
  * @brief  把当前响应缓冲的原始数据以十六进制+字符串形式打印到 UART1（调试用）
@@ -182,6 +185,12 @@ static uint32_t esp8266_pump_rx(void)
      * MQTT模式下不调用旧的scan_ipd（会追加\n破坏二进制），由TCPRead内部用scan_ipd_raw处理 */
     if (s_mqtt_mode == 0U) {
         esp8266_scan_ipd();
+    }
+
+    /* Detect async WiFi link-lost event (hotspot dropped), set flag for upper layer */
+    if ((s_wifi_closed == 0U) &&
+        (esp8266_mem_contains(s_resp_buf, s_resp_len, "WIFI DISCONNECT") != 0U)) {
+        s_wifi_closed = 1U;
     }
 
     return got;
@@ -633,6 +642,42 @@ uint8_t BSP_ESP8266_IsTCPClosed(void)
 void BSP_ESP8266_ClearClosedFlag(void)
 {
     s_tcp_closed = 0U;
+}
+
+/**
+ * @brief  Query WiFi link state via AT+CIPSTATUS (no stale-IP shortcut)
+ * @retval 1=WiFi connected (STATUS:2/3/4); 0=WiFi lost (STATUS:5) or query failed
+ */
+uint8_t BSP_ESP8266_IsWiFiConnected(void)
+{
+    esp8266_send_cmd("AT+CIPSTATUS");
+    if (esp8266_wait_response("OK", "ERROR", ESP8266_CMD_TIMEOUT_MS) != ESP8266_OK) {
+        return 0U;
+    }
+    if (esp8266_mem_contains(s_resp_buf, s_resp_len, "STATUS:5") != 0U) {
+        return 0U;   /* WiFi disconnected from AP */
+    }
+    if (esp8266_mem_contains(s_resp_buf, s_resp_len, "STATUS:") != 0U) {
+        return 1U;   /* STATUS:2/3/4 -> WiFi link alive */
+    }
+    return 0U;
+}
+
+/**
+ * @brief  Query async WiFi link-lost flag (pure memory read, no AT)
+ * @retval 1=module reported WIFI DISCONNECT; 0=no event yet
+ */
+uint8_t BSP_ESP8266_IsWiFiClosed(void)
+{
+    return s_wifi_closed;
+}
+
+/**
+ * @brief  Clear WiFi link-lost flag (call after rejoin succeeds)
+ */
+void BSP_ESP8266_ClearWiFiClosedFlag(void)
+{
+    s_wifi_closed = 0U;
 }
 
 /**

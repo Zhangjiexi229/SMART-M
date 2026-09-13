@@ -15,7 +15,8 @@ Desktop.ini
 *.o
 *.d
 
-# 调试/临时文件
+# Local debugging / temp files
 .diag/
 chk_at.png
 docs_check_image.png
+.tmp_wifi_patch.py

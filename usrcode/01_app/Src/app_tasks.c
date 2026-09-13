@@ -136,6 +136,19 @@
 #if BSP_BEEP_ENABLE
 #include "bsp_beep.h"
 #endif
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
+#if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
+#include "app_conn_engine.h"
+#endif
+#if PLAT_BRDMGR_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE
+#include "plat_brd.h"
+#include "plat_mgr.h"
+#endif
+#if BSP_IWDG_ENABLE
+#include "iwdg.h"
+#endif
 #include "main.h"
 #include "cmsis_os.h"
 #include "FreeRTOS.h"
@@ -351,6 +364,44 @@ static const osThreadAttr_t s_mqttTask_attr = {
     .priority   = (osPriority_t)MQTT_TASK_PRIORITY,
 };
 #endif /* APP_MQTT_ENABLE && BSP_ESP8266_ENABLE */
+
+/* ==========================================================================
+ *  看门狗监控任务（多任务心跳，所有关键任务心跳正常才喂狗）
+ * ========================================================================== */
+#if APP_WATCHDOG_ENABLE
+static osThreadId_t s_watchdogTaskHandle;
+
+static const osThreadAttr_t s_watchdogTask_attr = {
+    .name       = "WatchdogTask",
+    .stack_size = 256 * 4,
+    .priority   = (osPriority_t)osPriorityAboveNormal,
+};
+#endif /* APP_WATCHDOG_ENABLE */
+
+/* ==========================================================================
+ *  平台服务任务（PlatSvcTask）：周期驱动设备处理 + 连接器状态刷新
+ * ========================================================================== */
+#if APP_PLAT_TASK_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE
+static osThreadId_t s_platTaskHandle;
+
+static void APP_PlatSvcTask(void *argument)
+{
+    (void)argument;
+    for (;;) {
+        (void)plat_devmgr_process_all();   /* 统一驱动设备周期处理 */
+#if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
+        app_conn_engine_process();         /* 刷新 MQTT 连接器状态 */
+#endif
+        osDelay(1000U);
+    }
+}
+
+static const osThreadAttr_t s_platTask_attr = {
+    .name       = "PlatSvcTask",
+    .stack_size = 256 * 4,
+    .priority   = (osPriority_t)osPriorityLow,
+};
+#endif /* APP_PLAT_TASK_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE */
 
 /* ==========================================================================
  *  OLED显示任务（毕设：三页面渲染 + 告警反白闪烁）
@@ -576,6 +627,24 @@ void APP_Init(void)
     /* BSP_BEEP_Beep(100U);  // 临时注释：调度器启动前 HAL_Delay 依赖 SysTick，被 FreeRTOS 接管后死循环 */
 #endif
 
+#if BSP_IWDG_ENABLE
+    /* 独立看门狗启动（调度器启动前的最后一步）：
+     * 所有耗时初始化（ESP8266上电2s等待等）已完成，
+     * 之后由 app_watchdog 任务（最先创建）周期喂狗 */
+    MX_IWDG_Init();
+#endif
+
+#if PLAT_BRDMGR_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE
+    /* 平台层：注册板级设备表 → 批量 init/start（对象化设备生命周期） */
+    (void)plat_brdmgr_init();
+    (void)plat_devmgr_init_all();
+    (void)plat_devmgr_start_all();
+#endif
+#if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
+    /* 注册 MQTT 连接器到 plat_conn（状态由 app_mqtt 维护，PlatSvcTask 周期刷新） */
+    (void)app_conn_engine_mqtt_register();
+#endif
+
     BSP_UART1_Printf("[Init] APP_Init done, starting scheduler...\r\n");
 }
 
@@ -606,6 +675,24 @@ void APP_TASKS_CreateObjects(void)
  * @brief  创建所有应用任务 */
 void APP_TASKS_CreateTasks(void)
 {
+#if APP_WATCHDOG_ENABLE
+    /* Watchdog 任务最先创建：确保优先获得堆内存；创建失败则进入喂狗死循环防复位 */
+    s_watchdogTaskHandle = osThreadNew(APP_Watchdog_Task, NULL, &s_watchdogTask_attr);
+    if (s_watchdogTaskHandle == NULL) {
+        BSP_UART1_Printf("[FATAL] Watchdog task create failed (heap too small?), feeding dog forever\r\n");
+        for (;;) {
+            MX_IWDG_Refresh();
+        }
+    }
+#endif /* APP_WATCHDOG_ENABLE */
+
+#if APP_PLAT_TASK_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE
+    s_platTaskHandle = osThreadNew(APP_PlatSvcTask, NULL, &s_platTask_attr);
+    if (s_platTaskHandle == NULL) {
+        BSP_UART1_Printf("[FATAL] PlatSvc task create failed\r\n");
+    }
+#endif /* APP_PLAT_TASK_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE */
+
 #if APP_UART1_CMD_ENABLE
     s_uart1RelayTaskHandle = osThreadNew(APP_UART1_RelayTask, s_uart1_rx_stream, &s_uart1RelayTask_attr);
     s_cmd1TaskHandle       = osThreadNew(APP_CMD1_Task,       s_uart1_rx_stream, &s_cmd1Task_attr);
@@ -635,14 +722,23 @@ void APP_TASKS_CreateTasks(void)
 
 #if APP_SHT30_ENABLE && BSP_SHT30_ENABLE
     s_sht30TaskHandle = osThreadNew(APP_SHT30_Task, NULL, &s_sht30Task_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_sht30TaskHandle != NULL) { Watchdog_Register(WDT_TASK_SHT30); }
+#endif
 #endif /* APP_SHT30_ENABLE && BSP_SHT30_ENABLE */
 
 #if APP_QMI8658_ENABLE && BSP_QMI8658_ENABLE
     s_qmi8658TaskHandle = osThreadNew(APP_QMI8658_Task, NULL, &s_qmi8658Task_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_qmi8658TaskHandle != NULL) { Watchdog_Register(WDT_TASK_QMI8658); }
+#endif
 #endif /* APP_QMI8658_ENABLE && BSP_QMI8658_ENABLE */
 
 #if APP_INA226_ENABLE && BSP_INA226_ENABLE
     s_ina226TaskHandle = osThreadNew(APP_INA226_Task, NULL, &s_ina226Task_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_ina226TaskHandle != NULL) { Watchdog_Register(WDT_TASK_INA226); }
+#endif
 #endif /* APP_INA226_ENABLE && BSP_INA226_ENABLE */
 
 #if APP_HC_SR04_ENABLE && BSP_HC_SR04_ENABLE
@@ -655,10 +751,16 @@ void APP_TASKS_CreateTasks(void)
 
 #if APP_MQTT_ENABLE && BSP_ESP8266_ENABLE
     s_mqttTaskHandle = osThreadNew(APP_MQTT_Task, NULL, &s_mqttTask_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_mqttTaskHandle != NULL) { Watchdog_Register(WDT_TASK_MQTT); }
+#endif
 #endif /* APP_MQTT_ENABLE && BSP_ESP8266_ENABLE */
 
 #if APP_OLED_ENABLE && APP_TASKS_ENABLE && BSP_OLED_ENABLE
     s_oledTaskHandle = osThreadNew(APP_OLED_DisplayTask, NULL, &s_oledTask_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_oledTaskHandle != NULL) { Watchdog_Register(WDT_TASK_OLED); }
+#endif
 #endif /* APP_OLED_ENABLE && APP_TASKS_ENABLE && BSP_OLED_ENABLE */
 
     /* 串口日志汇总任务：无条件创建（OLED 故障期间的唯一输出通道） */
@@ -666,10 +768,16 @@ void APP_TASKS_CreateTasks(void)
 
 #if APP_ALARM_ENABLE && APP_TASKS_ENABLE
     s_alarmTaskHandle = osThreadNew(APP_ALARM_Task, NULL, &s_alarmTask_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_alarmTaskHandle != NULL) { Watchdog_Register(WDT_TASK_ALARM); }
+#endif
 #endif /* APP_ALARM_ENABLE && APP_TASKS_ENABLE */
 
 #if APP_KEY_MATRIX_ENABLE && BSP_KEY_MATRIX_ENABLE
     s_keyMatrixTaskHandle = osThreadNew(APP_KeyMatrix_Task, NULL, &s_keyMatrixTask_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_keyMatrixTaskHandle != NULL) { Watchdog_Register(WDT_TASK_KEY_MATRIX); }
+#endif
 #endif /* APP_KEY_MATRIX_ENABLE && BSP_KEY_MATRIX_ENABLE */
 
 #if APP_MODBUS_ENABLE

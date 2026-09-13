@@ -10,6 +10,9 @@
  ******************************************************************************
  */
 #include "module_cfg.h"
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
 #if APP_ALARM_ENABLE && APP_TASKS_ENABLE
 
 #include "app_alarm.h"
@@ -163,6 +166,10 @@ void APP_ALARM_Task(void *argument)
                      (unsigned)APP_ALARM_PERIOD_MS, (unsigned)(APP_ALARM_HYSTERESIS * 100.0f));
 
     for (;;) {
+#if APP_WATCHDOG_ENABLE
+    Watchdog_Kick(WDT_TASK_ALARM);  /* 心跳：任务存活标记 */
+#endif
+
         /* 1. 读取最新诊断快照（振动窗口由 QMI8658 任务 10ms 喂样） */
         APP_DIAG_GetSnapshot(&data);
 

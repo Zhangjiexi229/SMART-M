@@ -14,6 +14,9 @@
  ******************************************************************************
  */
 #include "module_cfg.h"
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
 #if APP_OLED_ENABLE && APP_TASKS_ENABLE && BSP_OLED_ENABLE
 
 #include "app_oled.h"
@@ -39,6 +42,9 @@
 #endif
 #if APP_MQTT_ENABLE
 #include "app_mqtt.h"
+#endif
+#if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
+#include "app_conn_engine.h"
 #endif
 
 /* ========== 互斥锁 ========== */
@@ -216,12 +222,15 @@ static void APP_OLED_RenderStatus(void)
 
     BSP_OLED_ShowString(0, 0, "System Status");
 
-    /* WiFi 状态（MQTT任务状态：bit2=MQTT已连接） */
-#if APP_MQTT_ENABLE
-    snprintf(buf, sizeof(buf), "WiFi: %s",
+    /* 连接状态（plat_conn 连接器状态：ONLINE/LINKING/OFFLINE/FAULT，
+       由 app_conn_engine 转发 app_mqtt 的 WiFi/TCP/MQTT 状态位） */
+#if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
+    snprintf(buf, sizeof(buf), "MQTT: %s", app_conn_engine_state_str());
+#elif APP_MQTT_ENABLE
+    snprintf(buf, sizeof(buf), "MQTT: %s",
              (APP_MQTT_GetStatus() & 0x04U) ? "online" : "offline");
 #else
-    snprintf(buf, sizeof(buf), "WiFi: --");
+    snprintf(buf, sizeof(buf), "MQTT: --");
 #endif
     BSP_OLED_ShowString(2, 0, buf);
 
@@ -295,6 +304,10 @@ void APP_OLED_DisplayTask(void *argument)
     BSP_UART1_Printf("[OLED] Display task started (period=100ms)\r\n");
 
     for (;;) {
+#if APP_WATCHDOG_ENABLE
+    Watchdog_Kick(WDT_TASK_OLED);  /* 心跳：任务存活标记 */
+#endif
+
         if (!APP_OLED_Lock()) {
             osDelay(100U);
             continue;

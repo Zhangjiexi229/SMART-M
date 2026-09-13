@@ -17,6 +17,7 @@
 #define BSP_UART1_ENABLE        1   /* UART1驱动（DMA环形接收 + IDLE判帧，调试打印用；WiFi任务依赖） */
 #define BSP_UART3_ENABLE        1   /* UART3驱动（DMA环形接收 + IDLE判帧，ESP8266通信口） */
 #define BSP_ESP8266_ENABLE      1   /* ESP8266 WiFi模块AT指令驱动（依赖BSP_UART3） */
+#define BSP_IWDG_ENABLE         1   /* 独立看门狗IWDG（寄存器直操作，LSI≈32kHz，超时3秒，防系统跑飞；依赖Core/Src/iwdg.c，由app_watchdog统一喂狗） */
 #define BSP_KEY_ENABLE          0   /* 按键驱动（GPIO读取+消抖状态机）——F407VET6无PG端口，独立键停用；板载按键 WK_UP=PA0/KEY0=PE4/KEY1=PE3 */
 #define BSP_KEY_MATRIX_ENABLE   1   /* 4x4矩阵键盘驱动（行PE2/PE6/PE7/PE10，列PE8/PE9/PE11/PE12，行扫描+列读取；避开板载KEY0=PE4/KEY1=PE3与Echo=PE5） */
 #define BSP_BEEP_ENABLE         1   /* 有源蜂鸣器驱动（PA5，NPN三极管驱动，高电平响） */
@@ -32,6 +33,13 @@
 #define BSP_AT24C02_ENABLE      0   /* I2C EEPROM驱动——新核心板无AT24C02芯片，停用 */
 #define BSP_W25Q128_ENABLE      0   /* SPI Flash W25Q128——新板W25Q128为板载(SPI1)，工程不使用，停用 */
 #define BSP_HC_SR04_ENABLE      0   /* HC-SR04超声波测距驱动（PC11=Trig, PE5=Echo，轮询测量） */
+/* ========== PLAT 平台抽象层模块开关（对齐 v2.2a 五层架构，03_plat） ========== */
+#define PLAT_OBJ_ENABLE          1   /* 对象模型（plat_obj.h）：plat_dev_t/plat_svc_t + 统一生命周期状态 */
+#define PLAT_DEVMGR_ENABLE       1   /* 设备管理器（plat_devmgr）：注册/查找/批量生命周期驱动（依赖PLAT_OBJ_ENABLE） */
+#define PLAT_SVCMGR_ENABLE       1   /* 服务管理器（plat_svcmgr）：服务注册/启停+依赖注入校验（依赖PLAT_OBJ_ENABLE） */
+#define PLAT_BRDMGR_ENABLE       1   /* 板级管理器（plat_brdmgr）：板级资源表→批量注册设备（依赖PLAT_DEVMGR_ENABLE） */
+#define PLAT_CONN_ENABLE         1   /* 连接器抽象（plat_conn）：连接器对象+注册表+统一状态机（bit0=链路 bit1=传输 bit2=应用） */
+#define PLAT_OLED_ENABLE         1   /* OLED 设备对象化封装（plat_oled：g_oled_dev + 便捷显示接口，依赖BSP_OLED_ENABLE） */
 /* ========== Protocol 协议层模块开关 ========== */
 #define PROTOCOL_ENABLE         0   /* 字符指令解析协议——新板适配精简，串口指令协议停用（毕设主线为MQTT云） */
 
@@ -73,6 +81,29 @@
 #if APP_CONFIG_ENABLE && !BSP_FLASH_CONFIG_ENABLE
 #error "依赖缺失：APP_CONFIG_ENABLE 依赖 BSP_FLASH_CONFIG_ENABLE=1"
 #endif
+/* 多任务看门狗依赖IWDG驱动 */
+#if APP_WATCHDOG_ENABLE && !BSP_IWDG_ENABLE
+#error "依赖缺失：APP_WATCHDOG_ENABLE 依赖 BSP_IWDG_ENABLE=1"
+#endif
+/* 平台层依赖校验（对齐 v2.2a 五层架构） */
+#if PLAT_DEVMGR_ENABLE && !PLAT_OBJ_ENABLE
+#error "依赖缺失：PLAT_DEVMGR_ENABLE 依赖 PLAT_OBJ_ENABLE=1"
+#endif
+#if PLAT_SVCMGR_ENABLE && !PLAT_OBJ_ENABLE
+#error "依赖缺失：PLAT_SVCMGR_ENABLE 依赖 PLAT_OBJ_ENABLE=1"
+#endif
+#if PLAT_BRDMGR_ENABLE && !PLAT_DEVMGR_ENABLE
+#error "依赖缺失：PLAT_BRDMGR_ENABLE 依赖 PLAT_DEVMGR_ENABLE=1"
+#endif
+#if PLAT_OLED_ENABLE && !BSP_OLED_ENABLE
+#error "依赖缺失：PLAT_OLED_ENABLE 依赖 BSP_OLED_ENABLE=1"
+#endif
+#if APP_CONN_ENGINE_ENABLE && !(PLAT_CONN_ENABLE && APP_MQTT_ENABLE)
+#error "依赖缺失：APP_CONN_ENGINE_ENABLE 依赖 PLAT_CONN_ENABLE=1 与 APP_MQTT_ENABLE=1"
+#endif
+#if APP_PLAT_TASK_ENABLE && !(PLAT_DEVMGR_ENABLE && APP_CONN_ENGINE_ENABLE)
+#error "依赖缺失：APP_PLAT_TASK_ENABLE 依赖 PLAT_DEVMGR_ENABLE=1 与 APP_CONN_ENGINE_ENABLE=1"
+#endif
 #define LED_BLINK_TASK_ENABLE   0   /* LED闪烁任务（LED1/LED2固定周期闪烁，受APP_TASKS_ENABLE约束）；注意：会与串口指令控制LED冲突，串口控制场景请保持0 */
 #define APP_KEY_ENABLE          0   /* 按键扫描任务（依赖BSP_KEY_ENABLE）——F407VET6无PG端口，独立键停用，按键功能由4x4矩阵键盘承担 */
 #define APP_LIGHT_SENSOR_ENABLE 0   /* 光敏传感器采集任务（周期采集+串口打印+LED分级控制+OLED显示，受APP_TASKS_ENABLE约束，依赖BSP_LIGHT_SENSOR_ENABLE=1） */
@@ -93,6 +124,9 @@
 #define APP_KEY_MATRIX_ENABLE   1   /* 矩阵键盘应用任务（消抖+页面切换/继电器/蜂鸣器/阈值设置，受APP_TASKS_ENABLE约束，依赖BSP_KEY_MATRIX_ENABLE=1） */
 #define APP_WIFI_ENABLE         0   /* WiFi上报任务（ESP8266连路由器+TCP上报温湿度，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1） */
 #define APP_MQTT_ENABLE         1   /* MQTT上云任务（ESP8266+Paho MQTT连接云平台，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1，与APP_WIFI_ENABLE互斥） */
+#define APP_CONN_ENGINE_ENABLE  1   /* 连接引擎（app_conn_engine）：把MQTT连接状态注册为plat_conn连接器并周期刷新（依赖PLAT_CONN_ENABLE+APP_MQTT_ENABLE） */
+#define APP_PLAT_TASK_ENABLE    1   /* 平台服务任务（PlatSvcTask）：周期plat_devmgr_process_all+连接器状态刷新（依赖PLAT_DEVMGR_ENABLE） */
+#define APP_WATCHDOG_ENABLE     1   /* 多任务心跳看门狗任务（所有关键任务心跳正常才喂狗，任务卡死自动复位；依赖BSP_IWDG_ENABLE=1，移植自v2.2a） */
 #define APP_MODBUS_ENABLE       0   /* Modbus主从一体任务——新板PB1被LCD背光上拉(R13 15K)占用，毕设主线为MQTT云，停用 */
 #define APP_EEPROM_ENABLE       0   /* EEPROM配置存取模块（依赖BSP_AT24C02_ENABLE）——新板无AT24C02，停用 */
 #define APP_HC_SR04_ENABLE      0   /* 超声波采集任务（周期测量+串口打印+协议上报+可选LED控制，受APP_TASKS_ENABLE约束，依赖BSP_HC_SR04_ENABLE=1） */
@@ -104,6 +138,7 @@
 #define BSP_ESP8266_UART1_PRINTF_ENABLE  1   /* BSP ESP8266 AT command printf */
 #define APP_MQTT_UART1_PRINTF_ENABLE     1   /* APP MQTT cloud task printf */
 #define PROTOCOL_MQTT_UART1_PRINTF_ENABLE 1  /* protocol layer mqtt_port printf */
+#define APP_WATCHDOG_UART1_PRINTF_ENABLE 1   /* APP watchdog task printf */
 
 /* ========== 各模块 LED 控制独立开关 ==========
  *  仅控制对应模块是否执行 LED 动作，不影响 LED 驱动本身（BSP_LED_ENABLE）。

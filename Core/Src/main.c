@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include <string.h>
 #include "adc.h"
 #include "dma.h"
 #include "tim.h"
@@ -101,6 +102,22 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* 打印上电复位原因（诊断 IWDG 看门狗复位：每次系统被看门狗复位后启动都会显示） */
+  {
+    uint32_t csr = RCC->CSR;
+    const char *reason = "UNKNOWN";
+    if (csr & RCC_CSR_LPWRRSTF)  reason = "LOW-POWER RESET";
+    else if (csr & RCC_CSR_WWDGRSTF) reason = "WWDG RESET";
+    else if (csr & RCC_CSR_IWDGRSTF) reason = "IWDG (WATCHDOG) RESET";
+    else if (csr & RCC_CSR_SFTRSTF)  reason = "SOFTWARE RESET";
+    else if (csr & RCC_CSR_PORRSTF)   reason = "POWER-ON/POWER-DOWN RESET";
+    else if (csr & RCC_CSR_PINRSTF)   reason = "NRST PIN RESET";
+    else if (csr & RCC_CSR_BORRSTF)   reason = "BROWN-OUT RESET";
+    HAL_UART_Transmit(&huart1, (uint8_t *)"[BOOT] Reset reason: ", 21, 100);
+    HAL_UART_Transmit(&huart1, (uint8_t *)reason, (uint16_t)strlen(reason), 100);
+    HAL_UART_Transmit(&huart1, (uint8_t *)"\r\n", 2, 100);
+    __HAL_RCC_CLEAR_RESET_FLAGS();
+  }
   /* USER CODE END 2 */
 
   /* Init scheduler */

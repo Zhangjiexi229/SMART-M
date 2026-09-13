@@ -205,7 +205,7 @@ static uint32_t s_connect_fail_count = 0U;
 static uint8_t s_force_tcp_rebuild = 0U;
 #define MQTT_MAX_FAIL_BEFORE_RESET  5U    /* 连续失败 5 次后复位 ESP8266 */
 #define MQTT_RECONNECT_BASE_MS      1000U /* 退避基数 1 秒 */
-#define MQTT_RECONNECT_MAX_MS       30000U/* 退避上限 30 秒 */
+#define MQTT_RECONNECT_MAX_MS       8000U/* 退避上限 8 秒（对齐v2.2a加快恢复，保留退避防风暴） */
 
 /* 待回复缓冲：在 mqtt_message_handler 回调中填充，在任务主循环中发布。
  * 不能在回调内直接调用 MQTTPublish——回调运行在 MQTTYield 的读取上下文中，
@@ -703,8 +703,28 @@ static uint8_t mqtt_full_connect(void)
         return 0U;
     }
     if (BSP_ESP8266_GetIP(ip_buf, sizeof(ip_buf)) == ESP8266_OK) {
-        s_mqtt_status |= 0x01U;
-        MQTT_Printf("[MQTT] WiFi already connected (IP=%s), skip join\r\n", ip_buf);
+        /* 热点断开后 CIFSR 可能仍返回旧 IP（假在线），用 CIPSTATUS 二次确认 WiFi 真正在线 */
+        if (BSP_ESP8266_IsWiFiConnected() != 0U) {
+            s_mqtt_status |= 0x01U;
+            MQTT_Printf("[MQTT] WiFi already connected (IP=%s), skip join\r\n", ip_buf);
+        } else {
+            MQTT_Printf("[MQTT] Stale IP=%s but WiFi link lost (STATUS:5), rejoin...\r\n", ip_buf);
+            if (BSP_ESP8266_SetMode(ESP8266_MODE_STA) != ESP8266_OK) {
+                MQTT_Printf("[MQTT] Set STA mode FAILED, abort connect\r\n");
+                return 0U;
+            }
+            if (BSP_ESP8266_JoinAP(MQTT_WIFI_SSID, MQTT_WIFI_PASSWORD) != ESP8266_OK) {
+                MQTT_Printf("[MQTT] WiFi rejoin FAILED, abort connect\r\n");
+                return 0U;
+            }
+            osDelay(300U);
+            if (BSP_ESP8266_GetIP(ip_buf, sizeof(ip_buf)) != ESP8266_OK) {
+                MQTT_Printf("[MQTT] WiFi rejoin OK but IP still invalid, abort connect\r\n");
+                return 0U;
+            }
+            s_mqtt_status |= 0x01U;
+            MQTT_Printf("[MQTT] WiFi reconnected (IP=%s)\r\n", ip_buf);
+        }
     } else {
         MQTT_Printf("[MQTT] WiFi down (no valid IP), rejoin AP \"%s\" ...\r\n", MQTT_WIFI_SSID);
         if (BSP_ESP8266_SetMode(ESP8266_MODE_STA) != ESP8266_OK) {
@@ -992,10 +1012,21 @@ static int mqtt_build_payload(char *payload, size_t buf_size)
  */
 static uint8_t mqtt_publish_once(void)
 {
+    static uint32_t s_last_pub_tick = 0U;
     char payload[512];   /*!< JSON缓冲（毕设扩展后属性较多，需512字节） */
     int  len;
     MQTTMessage msg;
     int rc;
+
+    /* 发布间隔监视：超过 5s 未成功发布说明任务被阻塞/网络中断，打点定位 */
+    {
+        uint32_t now_tick = (uint32_t)osKernelGetTickCount();
+        if ((s_last_pub_tick != 0U) && ((now_tick - s_last_pub_tick) > 5000U)) {
+            MQTT_Printf("[MQTT] publish gap %ums (stalled?)\r\n",
+                             (unsigned)(now_tick - s_last_pub_tick));
+        }
+        s_last_pub_tick = now_tick;
+    }
 
     len = mqtt_build_payload(payload, sizeof(payload));
     if (len <= 0) {
@@ -1201,25 +1232,28 @@ void APP_MQTT_Task(void *argument)
          *    必须频繁调用，间隔不能超过 keepalive/2，否则 Broker 会主动断开 ── */
         {
             uint32_t waited = 0U;
-            uint32_t probe_timer = 0U;
             int rc;
             while (waited < MQTT_PUBLISH_PERIOD_MS) {
-                /* 每 10s 主动探测 TCP 连接状态（提前发现半开连接） */
-                probe_timer += (uint32_t)MQTT_YIELD_TIMEOUT_MS;
-                if (probe_timer >= 10000U) {
-                    probe_timer = 0U;
-                    if (BSP_ESP8266_IsTCPConnected() == 0) {
-                        MQTT_Printf("[MQTT] TCP probe: connection dead, reconnect\r\n");
-                        connected = 0U;
-                        (void)BSP_ESP8266_TCPClose();
-                        s_connect_fail_count++;
+                /* 断线感知不依赖 AT+CIPSTATUS 轮询：MQTT 二进制数据模式下
+                 * 发 CIPSTATUS 会与数据流混流（wait_response 会消费二进制数据），
+                 * 且同步阻塞最长 2s 会拉长发布周期。改用三重异步机制：
+                 *   1) WIFI DISCONNECT 异步事件（s_wifi_closed，下方立即检查）
+                 *   2) TCPRead 检测到 "CLOSED"（s_tcp_closed，Yield 返回-1）
+                 *   3) Paho MQTT keepalive：半开静默连接由 PINGREQ/PINGRESP 超时发现
+                 */
+                /* WiFi 热点断开异步事件：立即重连（不等 10s TCP 探测） */
+                if (BSP_ESP8266_IsWiFiClosed() != 0U) {
+                    MQTT_Printf("[MQTT] WiFi link lost (async WIFI DISCONNECT), reconnect\r\n");
+                    connected = 0U;
+                    (void)BSP_ESP8266_TCPClose();
+                    BSP_ESP8266_ClearWiFiClosedFlag();
+                    s_connect_fail_count++;
 #if APP_WATCHDOG_ENABLE
-                        Watchdog_DelayWithKick(WDT_TASK_MQTT, mqtt_backoff_delay());
+                    Watchdog_DelayWithKick(WDT_TASK_MQTT, mqtt_backoff_delay());
 #else
-                        osDelay(mqtt_backoff_delay());
+                    osDelay(mqtt_backoff_delay());
 #endif
-                        break;
-                    }
+                    break;
                 }
                 rc = MQTTYield(&s_mqtt_client, MQTT_YIELD_TIMEOUT_MS);
                 if (rc != 0) {

@@ -10,6 +10,9 @@
  ******************************************************************************
  */
 #include "module_cfg.h"
+#if APP_WATCHDOG_ENABLE
+#include "app_watchdog.h"
+#endif
 #include "app_qmi8658.h"
 #include "cmsis_os.h"
 
@@ -110,6 +113,10 @@ void APP_QMI8658_Task(void *argument)
     osDelay(500U);
 
     for (;;) {
+#if APP_WATCHDOG_ENABLE
+    Watchdog_Kick(WDT_TASK_QMI8658);  /* 心跳：任务存活标记 */
+#endif
+
         /* 1. 读取六轴，失败重试 */
         ok = 0U;
         for (retry = 0U; retry < QMI8658_RETRY_COUNT; retry++) {

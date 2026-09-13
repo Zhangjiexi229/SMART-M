@@ -118,6 +118,9 @@ int8_t BSP_ESP8266_IsTCPConnected(void);
 ESP8266_Status_t BSP_ESP8266_TCPClose(void);
 uint8_t           BSP_ESP8266_IsTCPClosed(void);   /* 纯内存查询，不发AT */
 void              BSP_ESP8266_ClearClosedFlag(void);
+uint8_t           BSP_ESP8266_IsWiFiConnected(void);      /* query WiFi link: AT+CIPSTATUS STATUS:5 => lost */
+uint8_t           BSP_ESP8266_IsWiFiClosed(void);         /* async "WIFI DISCONNECT" event received */
+void              BSP_ESP8266_ClearWiFiClosedFlag(void);  /* clear async WiFi-lost flag */
 
 /**
  * @brief  非阻塞轮询 TCP 接收数据（解析 ESP8266 的 +IPD 包）
