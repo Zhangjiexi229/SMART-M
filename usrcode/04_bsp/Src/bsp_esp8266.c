@@ -43,8 +43,14 @@
  * app_mqtt.c 中定义此函数来 Kick watchdog，防止 JoinAP/TCPConnect 等长阻塞导致IWDG复位。 */
 __attribute__((weak)) void BSP_ESP8266_WaitHook(void) { }
 
+/* 延时回调：默认 HAL_Delay（裸机兼容），RTOS 环境由 APP 层重写为 osDelay
+ * 这样等待 ESP8266 响应期间 CPU 能调度其他任务（如 BT24 蓝牙任务） */
+__attribute__((weak)) void BSP_ESP8266_DelayMs(uint32_t ms) {
+  HAL_Delay(ms);
+}
+
 /* ========== 内部配置 ========== */
-#define ESP8266_RESP_BUF_SIZE     512U    /*!< 响应累积缓冲大小 */
+#define ESP8266_RESP_BUF_SIZE     1024U   /*!< 响应累积缓冲大小（1024：容纳多帧下行数据，降低溢出丢帧） */
 #define ESP8266_POLL_INTERVAL_MS  10U     /*!< 轮询间隔（ms），同时作为超时计数步长 */
 #define ESP8266_CMD_TIMEOUT_MS    2000U   /*!< 普通 AT 指令默认超时 */
 #define ESP8266_CIFSR_TIMEOUT_MS  5000U   /*!< 查询 IP 超时（WiFi刚连上时模块响应慢） */
@@ -65,7 +71,7 @@ static uint32_t s_ipd_len;                         /*!< 已提取数据长度 */
 /* MQTT 模式：1=使用原始数据通道（不追加\n），0=文本模式（旧PollIPD，追加\n） */
 static uint8_t  s_mqtt_mode = 0U;
 /* MQTT 专用接收环形缓冲（二进制安全，不追加\n） */
-#define ESP8266_MQTT_BUF_SIZE  512U
+#define ESP8266_MQTT_BUF_SIZE  1024U
 static uint8_t  s_mqtt_buf[ESP8266_MQTT_BUF_SIZE];
 static uint32_t s_mqtt_head;   /* 读指针 */
 static uint32_t s_mqtt_tail;   /* 写指针 */
@@ -169,14 +175,31 @@ static uint32_t esp8266_pump_rx(void)
         return 0U;
     }
 
-    if (s_resp_len >= ESP8266_RESP_BUF_SIZE) {
-        /* 缓冲满：丢弃最旧的一半，给新数据腾空间 */
-        uint32_t half = ESP8266_RESP_BUF_SIZE / 2U;
-        memmove(s_resp_buf, &s_resp_buf[half], ESP8266_RESP_BUF_SIZE - half);
-        s_resp_len = ESP8266_RESP_BUF_SIZE - half;
+    if (s_resp_len >= (ESP8266_RESP_BUF_SIZE - 1U)) {
+        /* 缓冲将满：优先保留最后一个 "+IPD," 帧头（防止撕毁未到齐的帧导致
+         * 下行数据永久丢失 -> Paho 解析错乱 -> 误断连）；找不到帧头时
+         * 再丢最旧一半（AT 响应关键字都在尾部，丢旧的不会误伤） */
+        uint32_t keep = ESP8266_RESP_BUF_SIZE;   /* 无效标记（区分"未找到帧头"与"帧头在0位"） */
+        for (uint32_t i = 1U; (i + 5U) <= s_resp_len; i++) {
+            if ((s_resp_buf[i - 1U] == '+') && (s_resp_buf[i] == 'I') &&
+                (s_resp_buf[i + 1U] == 'P') && (s_resp_buf[i + 2U] == 'D') &&
+                (s_resp_buf[i + 3U] == ',')) {
+                keep = i - 1U;   /* 记录最后一个帧头位置 */
+            }
+        }
+        if ((keep != ESP8266_RESP_BUF_SIZE) && (keep > 0U)) {
+            /* 找到帧头且不在0位：保留帧，丢帧头前的旧数据 */
+            memmove(s_resp_buf, &s_resp_buf[keep], s_resp_len - keep);
+            s_resp_len -= keep;
+        } else {
+            /* 无帧头，或帧头在0位（帧数据本身>缓冲，装不下）：丢最旧一半 */
+            uint32_t half = (ESP8266_RESP_BUF_SIZE - 1U) / 2U;
+            memmove(s_resp_buf, &s_resp_buf[half], s_resp_len - half);
+            s_resp_len -= half;
+        }
     }
 
-    free_space = ESP8266_RESP_BUF_SIZE - s_resp_len;
+    free_space = (ESP8266_RESP_BUF_SIZE - 1U) - s_resp_len;
     to_read = (avail < free_space) ? avail : free_space;
     got = BSP_UART3_Read(&s_resp_buf[s_resp_len], to_read);
     s_resp_len += got;
@@ -349,7 +372,7 @@ static ESP8266_Status_t esp8266_wait_response(const char *expect,
             return ESP8266_ERR_RESPONSE;
         }
 
-        HAL_Delay(ESP8266_POLL_INTERVAL_MS);
+        BSP_ESP8266_DelayMs(ESP8266_POLL_INTERVAL_MS);
         elapsed += ESP8266_POLL_INTERVAL_MS;
     }
 
@@ -839,11 +862,60 @@ uint32_t BSP_ESP8266_TCPRead(uint8_t *data_buf, uint32_t len, uint32_t timeout_m
         if (elapsed >= timeout_ms) {
             break;
         }
-        HAL_Delay(ESP8266_POLL_INTERVAL_MS);
+        BSP_ESP8266_DelayMs(ESP8266_POLL_INTERVAL_MS);
         elapsed += ESP8266_POLL_INTERVAL_MS;
     }
 
     return got;
+}
+
+/**
+ * @brief  等待指定字节数全部就绪后一次性读取（原子读，不消费部分数据）
+ * @note   用于 Paho 读包：只在整个 MQTT 包已进入环形缓冲后才取出；
+ *         超时返回 0 且不消费任何字节——下一轮可正确续读，
+ *         避免"半个包被消费 -> 字节流反同步 -> 下行通道假死"的问题
+ */
+uint32_t BSP_ESP8266_TCPReadFull(uint8_t *data_buf, uint32_t len, uint32_t timeout_ms)
+{
+    uint32_t elapsed = 0U;
+
+    if ((data_buf == NULL) || (len == 0U) || (s_mqtt_mode == 0U)) {
+        return 0U;
+    }
+
+    for (;;) {
+        uint32_t used = (s_mqtt_tail + ESP8266_MQTT_BUF_SIZE - s_mqtt_head) % ESP8266_MQTT_BUF_SIZE;
+        if (used >= len) {
+            for (uint32_t j = 0U; j < len; j++) {
+                data_buf[j] = s_mqtt_buf[s_mqtt_head];
+                s_mqtt_head = (s_mqtt_head + 1U) % ESP8266_MQTT_BUF_SIZE;
+            }
+            return len;
+        }
+
+        /* 泵入新数据（MQTT模式下pump_rx不调用旧scan_ipd），raw解析器提取 */
+        (void)esp8266_pump_rx();
+        esp8266_scan_ipd_raw();
+
+        /* 检测连接断开：只匹配独立行的 CLOSED */
+        if (esp8266_mem_contains(s_resp_buf, s_resp_len, "\r\nCLOSED\r\n") != 0U) {
+            s_tcp_closed = 1U;
+            break;
+        }
+        if ((s_resp_len >= 8U) &&
+            (memcmp(s_resp_buf, "CLOSED\r\n", 8U) == 0)) {
+            s_tcp_closed = 1U;
+            break;
+        }
+
+        if (elapsed >= timeout_ms) {
+            break;
+        }
+        BSP_ESP8266_DelayMs(ESP8266_POLL_INTERVAL_MS);
+        elapsed += ESP8266_POLL_INTERVAL_MS;
+    }
+
+    return 0U;
 }
 
 uint8_t BSP_ESP8266_TCPIsAlive(void)

@@ -43,6 +43,9 @@
 #include "app_mqtt.h"
 #include "mqtt_port.h"
 #include "bsp_esp8266.h"
+#if APP_NETCFG_ENABLE
+#include "app_netcfg.h"
+#endif
 #if APP_WATCHDOG_ENABLE
 #include "app_watchdog.h"
 #endif
@@ -105,6 +108,32 @@
 #define MQTT_Printf(fmt, ...)  ((void)0)
 #endif
 
+/* ==========================================================================
+ *  Runtime net config aliases: use Flash-stored config when APP_NETCFG_ENABLE=1,
+ *  otherwise fall back to compile-time macros in app_mqtt.h
+ * ========================================================================== */
+#if APP_NETCFG_ENABLE
+#define MQTT_CFG_WIFI_SSID     g_netcfg.wifi_ssid
+#define MQTT_CFG_WIFI_PASSWORD g_netcfg.wifi_password
+#define MQTT_CFG_BROKER_HOST   g_netcfg.broker_host
+#define MQTT_CFG_BROKER_IP     g_netcfg.broker_ip
+#define MQTT_CFG_BROKER_PORT   g_netcfg.broker_port
+#define MQTT_CFG_CLIENT_ID     g_netcfg.client_id
+#define MQTT_CFG_USERNAME      g_netcfg.username
+#define MQTT_CFG_PASSWORD      g_netcfg.password
+#define MQTT_CFG_DEVICE_ID     g_netcfg.device_id
+#else
+#define MQTT_CFG_WIFI_SSID     MQTT_WIFI_SSID
+#define MQTT_CFG_WIFI_PASSWORD MQTT_WIFI_PASSWORD
+#define MQTT_CFG_BROKER_HOST   MQTT_BROKER_HOST
+#define MQTT_CFG_BROKER_IP     ""
+#define MQTT_CFG_BROKER_PORT   MQTT_BROKER_PORT
+#define MQTT_CFG_CLIENT_ID     MQTT_CLIENT_ID
+#define MQTT_CFG_USERNAME      MQTT_USERNAME
+#define MQTT_CFG_PASSWORD      MQTT_PASSWORD
+#define MQTT_CFG_DEVICE_ID     HUAWEI_DEVICE_ID
+#endif
+
 /* BSP层长等待回调：在 esp8266_wait_response 中每500ms调用一次，
  * 防止 JoinAP(10s)/TCPConnect(8s) 等长阻塞导致 watchdog stall + IWDG复位 */
 #if APP_WATCHDOG_ENABLE
@@ -113,6 +142,13 @@ void BSP_ESP8266_WaitHook(void)
     Watchdog_Kick(WDT_TASK_MQTT);
 }
 #endif
+
+/* BSP层延时回调：用 RTOS osDelay 代替 HAL_Delay，
+ * 等待 ESP8266 响应期间 CPU 能调度 BT24 等其他任务，避免蓝牙被饿死 */
+void BSP_ESP8266_DelayMs(uint32_t ms)
+{
+    osDelay(ms);
+}
 
 /* ==========================================================================
  *  内部资源
@@ -203,6 +239,7 @@ static uint8_t mqtt_flush_offline_cache(MQTTClient *client)
 static uint32_t s_connect_fail_count = 0U;
 /* MQTT CONNECT 失败后强制下次重建 TCP（应对半开连接：ESP8266 显示已连但 Broker 已断） */
 static uint8_t s_force_tcp_rebuild = 0U;
+static uint8_t s_force_wifi_rejoin  = 0U;   /* 1=net config changed, force WiFi rejoin */
 #define MQTT_MAX_FAIL_BEFORE_RESET  5U    /* 连续失败 5 次后复位 ESP8266 */
 #define MQTT_RECONNECT_BASE_MS      1000U /* 退避基数 1 秒 */
 #define MQTT_RECONNECT_MAX_MS       8000U/* 退避上限 8 秒（对齐v2.2a加快恢复，保留退避防风暴） */
@@ -239,13 +276,13 @@ static char                s_report_extra[MQTT_EXTRA_BUF_SIZE];
 static void huawei_build_topics(void)
 {
     snprintf(s_topic_pub, sizeof(s_topic_pub),
-             "$oc/devices/%s/sys/properties/report", HUAWEI_DEVICE_ID);
+             "$oc/devices/%s/sys/properties/report", MQTT_CFG_DEVICE_ID);
     snprintf(s_topic_sub, sizeof(s_topic_sub),
-             "$oc/devices/%s/sys/commands/#", HUAWEI_DEVICE_ID);
+             "$oc/devices/%s/sys/commands/#", MQTT_CFG_DEVICE_ID);
     snprintf(s_topic_msg_up, sizeof(s_topic_msg_up),
-             "$oc/devices/%s/sys/messages/up", HUAWEI_DEVICE_ID);
+             "$oc/devices/%s/sys/messages/up", MQTT_CFG_DEVICE_ID);
     snprintf(s_topic_msg_down, sizeof(s_topic_msg_down),
-             "$oc/devices/%s/sys/messages/down", HUAWEI_DEVICE_ID);
+             "$oc/devices/%s/sys/messages/down", MQTT_CFG_DEVICE_ID);
 }
 
 /**
@@ -418,7 +455,7 @@ static void mqtt_flush_reply(MQTTClient *client)
     /* 拼接响应主题：$oc/devices/{id}/sys/commands/response/request_id={rid} */
     snprintf(s_topic_resp, sizeof(s_topic_resp),
              "$oc/devices/%s/sys/commands/response/request_id=%s",
-             HUAWEI_DEVICE_ID, s_reply_request_id);
+             MQTT_CFG_DEVICE_ID, s_reply_request_id);
 
     msg.qos        = (enum QoS)MQTT_QOS;
     msg.retained   = 0;
@@ -702,7 +739,7 @@ static uint8_t mqtt_full_connect(void)
         MQTT_Printf("[MQTT] Set STA mode FAILED (post-reset), abort connect\r\n");
         return 0U;
     }
-    if (BSP_ESP8266_GetIP(ip_buf, sizeof(ip_buf)) == ESP8266_OK) {
+    if ((s_force_wifi_rejoin == 0U) && (BSP_ESP8266_GetIP(ip_buf, sizeof(ip_buf)) == ESP8266_OK)) {
         /* 热点断开后 CIFSR 可能仍返回旧 IP（假在线），用 CIPSTATUS 二次确认 WiFi 真正在线 */
         /* IsWiFiConnected 三态：1=在线，0=确认掉线(STATUS:5)，-1=查询失败(AT瞬时无响应)。
            查询失败时信任 GetIP 跳过 rejoin，避免无谓的 2~10s 重连；真掉线由异步
@@ -720,7 +757,7 @@ static uint8_t mqtt_full_connect(void)
                 MQTT_Printf("[MQTT] Set STA mode FAILED, abort connect\r\n");
                 return 0U;
             }
-            if (BSP_ESP8266_JoinAP(MQTT_WIFI_SSID, MQTT_WIFI_PASSWORD) != ESP8266_OK) {
+            if (BSP_ESP8266_JoinAP(MQTT_CFG_WIFI_SSID, MQTT_CFG_WIFI_PASSWORD) != ESP8266_OK) {
                 MQTT_Printf("[MQTT] WiFi rejoin FAILED, abort connect\r\n");
                 return 0U;
             }
@@ -730,15 +767,16 @@ static uint8_t mqtt_full_connect(void)
                 return 0U;
             }
             s_mqtt_status |= 0x01U;
+            s_force_wifi_rejoin = 0U;   /* new config applied */
             MQTT_Printf("[MQTT] WiFi reconnected (IP=%s)\r\n", ip_buf);
         }
     } else {
-        MQTT_Printf("[MQTT] WiFi down (no valid IP), rejoin AP \"%s\" ...\r\n", MQTT_WIFI_SSID);
+        MQTT_Printf("[MQTT] WiFi down (no valid IP), rejoin AP \"%s\" ...\r\n", MQTT_CFG_WIFI_SSID);
         if (BSP_ESP8266_SetMode(ESP8266_MODE_STA) != ESP8266_OK) {
             MQTT_Printf("[MQTT] Set STA mode FAILED, abort connect\r\n");
             return 0U;  /* WiFi 阶段失败，不进入 TCP */
         }
-        if (BSP_ESP8266_JoinAP(MQTT_WIFI_SSID, MQTT_WIFI_PASSWORD) != ESP8266_OK) {
+        if (BSP_ESP8266_JoinAP(MQTT_CFG_WIFI_SSID, MQTT_CFG_WIFI_PASSWORD) != ESP8266_OK) {
             MQTT_Printf("[MQTT] WiFi join FAILED. Check SSID/password/2.4GHz, abort connect\r\n");
             return 0U;  /* WiFi 阶段失败，不进入 TCP */
         }
@@ -749,6 +787,7 @@ static uint8_t mqtt_full_connect(void)
             return 0U;  /* WiFi 阶段失败，不进入 TCP */
         }
         s_mqtt_status |= 0x01U;
+        s_force_wifi_rejoin = 0U;   /* new config applied */
         MQTT_Printf("[MQTT] WiFi connected (IP=%s)\r\n", ip_buf);
     }
 
@@ -765,12 +804,11 @@ static uint8_t mqtt_full_connect(void)
            跳过 ESP8266 模块 DNS 直接用 IP 建连——本设备专属域名带 IPv6(AAAA) 记录，
            部分 ESP8266 AT 固件解析会超时导致 TCP connect FAILED 循环 */
         const char *tcp_target;
-#ifdef MQTT_BROKER_IP
-        tcp_target = (MQTT_BROKER_IP[0] != '\0') ? (const char *)MQTT_BROKER_IP
-                                                 : (const char *)MQTT_BROKER_HOST;
-#else
-        tcp_target = (const char *)MQTT_BROKER_HOST;
-#endif
+        if (MQTT_CFG_BROKER_IP[0] != '\0') {
+            tcp_target = (const char *)MQTT_CFG_BROKER_IP;
+        } else {
+            tcp_target = (const char *)MQTT_CFG_BROKER_HOST;
+        }
         if (s_force_tcp_rebuild != 0U) {
             MQTT_Printf("[MQTT] Force TCP rebuild (previous MQTT CONNECT failed)\r\n");
             (void)BSP_ESP8266_TCPClose();      /* 先关闭可能半开的连接 */
@@ -778,9 +816,9 @@ static uint8_t mqtt_full_connect(void)
             osDelay(200U);
         }
         MQTT_Printf("[MQTT] TCP connecting %s:%u ...\r\n",
-                         tcp_target, (unsigned)MQTT_BROKER_PORT);
+                         tcp_target, (unsigned)MQTT_CFG_BROKER_PORT);
         NetworkInit(&s_mqtt_network);
-        if (NetworkConnect(&s_mqtt_network, (char *)tcp_target, (int)MQTT_BROKER_PORT) != 0) {
+        if (NetworkConnect(&s_mqtt_network, (char *)tcp_target, (int)MQTT_CFG_BROKER_PORT) != 0) {
             MQTT_Printf("[MQTT] TCP connect FAILED. Check broker address/port/firewall\r\n");
             return 0U;
         }
@@ -797,14 +835,14 @@ static uint8_t mqtt_full_connect(void)
 
     /* ── 5. 发送 MQTT CONNECT 报文（华为云密钥鉴权） ── */
     connect_data.MQTTVersion           = 4;   /* MQTT 3.1.1 */
-    connect_data.clientID.cstring      = (char *)MQTT_CLIENT_ID;
+    connect_data.clientID.cstring      = (char *)MQTT_CFG_CLIENT_ID;
     connect_data.keepAliveInterval     = MQTT_KEEPALIVE_SEC;
     connect_data.cleansession          = 1;
-    connect_data.username.cstring      = (char *)MQTT_USERNAME;
-    connect_data.password.cstring      = (char *)MQTT_PASSWORD;
+    connect_data.username.cstring      = (char *)MQTT_CFG_USERNAME;
+    connect_data.password.cstring      = (char *)MQTT_CFG_PASSWORD;
 
     MQTT_Printf("[MQTT] Sending MQTT CONNECT (client=%s, keepalive=%ds)...\r\n",
-                     MQTT_CLIENT_ID, MQTT_KEEPALIVE_SEC);
+                     MQTT_CFG_CLIENT_ID, MQTT_KEEPALIVE_SEC);
     rc = MQTTConnect(&s_mqtt_client, &connect_data);
     if (rc != 0) {
         MQTT_Printf("[MQTT] MQTT CONNECT FAILED rc=%d (0=ok, -1=send/timeout/parse)\r\n", rc);
@@ -815,7 +853,7 @@ static uint8_t mqtt_full_connect(void)
     }
     s_force_tcp_rebuild = 0U;  /* 连接成功，清除强制重建标志 */
     s_mqtt_status |= 0x04U;
-    MQTT_Printf("[MQTT] MQTT connected (client=%s)\r\n", MQTT_CLIENT_ID);
+    MQTT_Printf("[MQTT] MQTT connected (client=%s)\r\n", MQTT_CFG_CLIENT_ID);
 
     /* ── 6. 拼接华为云主题 ── */
     huawei_build_topics();
@@ -1131,10 +1169,13 @@ void APP_MQTT_Task(void *argument)
     (void)argument;
     uint8_t connected = 0U;
 
+#if APP_NETCFG_ENABLE
+    APP_NetCfg_Load();   /* load WiFi/cloud config from internal Flash */
+#endif
     MQTT_Printf("[MQTT] Task started, broker=%s:%u, publish every %ums\r\n",
-                     MQTT_BROKER_HOST, (unsigned)MQTT_BROKER_PORT,
+                     MQTT_CFG_BROKER_HOST, (unsigned)MQTT_CFG_BROKER_PORT,
                      (unsigned)MQTT_PUBLISH_PERIOD_MS);
-    MQTT_Printf("[MQTT] Huawei IoTDA device_id=%s\r\n", HUAWEI_DEVICE_ID);
+    MQTT_Printf("[MQTT] Huawei IoTDA device_id=%s\r\n", MQTT_CFG_DEVICE_ID);
 
     /* 等待其他任务初始化（传感器等） */
     osDelay(500U);
@@ -1142,6 +1183,19 @@ void APP_MQTT_Task(void *argument)
     for (;;) {
 #if APP_WATCHDOG_ENABLE
         Watchdog_Kick(WDT_TASK_MQTT);
+#endif
+#if APP_NETCFG_ENABLE
+        /* Net config changed via BLE SETCFG: reconnect with new settings */
+        if (APP_NetCfg_IsModified()) {
+            APP_NetCfg_ClearModified();
+            s_force_wifi_rejoin = 1U;
+            s_connect_fail_count = 0U;
+            if (connected != 0U) {
+                MQTT_Printf("[MQTT] Net config changed, reconnect with new config\r\n");
+                (void)BSP_ESP8266_TCPClose();
+                connected = 0U;
+            }
+        }
 #endif
         /* ── 阶段 A：未连接 → 执行分段连接链路 ── */
         if (connected == 0U) {
@@ -1167,6 +1221,8 @@ void APP_MQTT_Task(void *argument)
             if (mqtt_full_connect() != 0U) {
                 connected = 1U;
                 s_connect_fail_count = 0U;  /* 连接成功，重置失败计数 */
+                /* 清除握手期间残留的 WIFI DISCONNECT 事件：否则连上后下一轮 yield 立即误判掉线 */
+                BSP_ESP8266_ClearWiFiClosedFlag();
                 MQTT_Printf("[MQTT] ===== Network recovered, publishing latest data =====\r\n");
                 /* 网络恢复：先发布最新传感器数据（确保云端看到当前状态） */
                 (void)mqtt_publish_once();

@@ -131,9 +131,14 @@ static int readPacket(MQTTClient* c, Timer* timer)
     }
 
     /* 3. read the rest of the buffer using a callback to supply the rest of the data */
-    if (rem_len > 0 && (rc = c->ipstack->mqttread(c->ipstack, c->readbuf + len, rem_len, TimerLeftMS(timer)) != rem_len)) {
-        rc = 0;
-        goto exit;
+    if (rem_len > 0)
+    {
+        int n = c->ipstack->mqttread(c->ipstack, c->readbuf + len, rem_len, TimerLeftMS(timer));
+        if (n != rem_len)
+        {
+            rc = 0;  /* timeout: no bytes consumed by TCPReadFull, stream stays in sync */
+            goto exit;
+        }
     }
 
     header.byte = c->readbuf[0];

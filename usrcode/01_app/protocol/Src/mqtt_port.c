@@ -76,7 +76,8 @@ static int esp8266_mqttread(Network *n, unsigned char *buf, int len, int timeout
         return -1;
     }
 
-    got = BSP_ESP8266_TCPRead((uint8_t *)buf, (uint32_t)len, (uint32_t)timeout_ms);
+    /* 原子读：整包就绪才消费，超时不消费（防止 Paho 半个包被消费导致流反同步） */
+    got = BSP_ESP8266_TCPReadFull((uint8_t *)buf, (uint32_t)len, (uint32_t)timeout_ms);
 
     if (got == 0U) {
         /* 无数据：只查断开标志（纯内存读取，不发 AT 命令）。

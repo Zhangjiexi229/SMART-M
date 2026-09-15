@@ -394,7 +394,7 @@ static osThreadId_t s_bt24TaskHandle;
 
 static const osThreadAttr_t s_bt24Task_attr = {
     .name       = "Bt24Task",
-    .stack_size = 512 * 4,   /* snprintf 浮点遥测帧 + JSON解析，栈需放大 */
+    .stack_size = 1024 * 4,   /* snprintf 浮点遥测帧 + JSON解析 + SETCFG 本地配置(512B)，栈需放大 */
     .priority   = (osPriority_t)osPriorityNormal,
 };
 #endif /* APP_BT24_ENABLE && BSP_BT24_ENABLE */

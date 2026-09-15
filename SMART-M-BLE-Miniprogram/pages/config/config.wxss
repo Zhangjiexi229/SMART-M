@@ -1,0 +1,143 @@
+/* 设备配置页样式（与首页风格一致） */
+.status-row {
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+  color: #555;
+  margin-bottom: 12rpx;
+  flex-wrap: wrap;
+}
+
+.status-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  margin-right: 8rpx;
+}
+
+.dot-green {
+  background: #2ea44f;
+}
+
+.dot-gray {
+  background: #c0c4cc;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 8rpx;
+}
+
+.device-item {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f0f1f4;
+}
+
+.device-item:last-child {
+  border-bottom: none;
+}
+
+.device-name {
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.device-meta {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 4rpx;
+  word-break: break-all;
+}
+
+.empty {
+  color: #999;
+  font-size: 26rpx;
+  text-align: center;
+  padding: 30rpx 0;
+}
+
+/* 显示范围开关 */
+.filter-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.filter-label {
+  font-size: 22rpx;
+  color: #888;
+  margin-left: 12rpx;
+  flex: 1;
+  line-height: 1.5;
+}
+
+/* 配置表单 */
+.cfg-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18rpx;
+}
+
+.cfg-label {
+  width: 190rpx;
+  font-size: 26rpx;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.cfg-input {
+  flex: 1;
+  background: #f5f6fa;
+  border-radius: 8rpx;
+  padding: 10rpx 20rpx;
+  font-size: 28rpx;
+}
+
+.cfg-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #999;
+  line-height: 1.6;
+}
+
+.warn-tip {
+  color: #bc4c00;
+}
+
+/* 按钮按下反馈 */
+.btn-pressed {
+  transform: scale(0.96);
+}
+
+.btn-green.btn-pressed {
+  background: #1e7e34;
+}
+
+.btn-red.btn-pressed {
+  background: #a81d26;
+}
+
+.btn-gray.btn-pressed {
+  background: #9aa0a6;
+}
+
+.btn-primary.btn-pressed {
+  background: #1a5c8a;
+}
+
+/* 日志 */
+.log-box {
+  max-height: 300rpx;
+  background: #f8f9fa;
+  border-radius: 8rpx;
+  padding: 12rpx;
+}
+
+.log-line {
+  font-size: 20rpx;
+  color: #666;
+  line-height: 1.6;
+  word-break: break-all;
+}

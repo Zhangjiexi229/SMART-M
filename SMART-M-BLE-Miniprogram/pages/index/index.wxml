@@ -14,19 +14,24 @@
       <text class="status-time">更新 {{lastUpdate}}</text>
     </view>
     <view class="btn-row">
-      <button class="btn btn-primary" size="mini" bindtap="onOpenAdapter" wx:if="{{!adapterReady}}">打开蓝牙</button>
-      <button class="btn btn-primary" size="mini" bindtap="onStartScan" wx:if="{{adapterReady && !connected}}">{{discovering ? '扫描中...' : '扫描设备'}}</button>
-      <button class="btn btn-red" size="mini" bindtap="onDisconnect" wx:if="{{connected}}">断开连接</button>
-      <button class="btn btn-gray" size="mini" bindtap="onClearLog" wx:if="{{logs.length}}">清空日志</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onOpenAdapter" wx:if="{{!adapterReady}}">打开蓝牙</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onStartScan" wx:if="{{adapterReady && !connected}}">{{discovering ? '扫描中...' : '扫描设备'}}</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onResetAdapter" wx:if="{{adapterReady && !connected}}">重置蓝牙</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-red" size="mini" bindtap="onDisconnect" wx:if="{{connected}}">断开连接</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onClearLog" wx:if="{{logs.length}}">清空日志</button>
     </view>
   </view>
 
   <!-- 设备列表 -->
   <view class="card" wx:if="{{adapterReady && !connected}}">
     <view class="card-title">附近设备（BT24）</view>
-    <view wx:if="{{devices.length === 0}}" class="empty">暂无设备，请确认模块已上电、靠近手机</view>
+    <view class="filter-row">
+      <switch checked="{{showAllDevices}}" bindchange="onToggleAll" color="#1f6feb" />
+      <text class="filter-label">显示全部蓝牙设备（部分模块广播不含 FFE0，需全量扫描）</text>
+    </view>
+    <view wx:if="{{devices.length === 0}}" class="empty">暂无设备：请确认模块已上电、靠近手机；若一个设备都没有，请检查手机系统定位是否开启（Android 扫描 BLE 需定位服务）</view>
     <view class="device-item" wx:for="{{devices}}" wx:key="deviceId" bindtap="onConnect" data-id="{{item.deviceId}}">
-      <view class="device-name">{{item.name}}</view>
+      <view class="device-name">{{item.isBt24 ? 'BT24 · ' : ''}}{{item.name}}</view>
       <view class="device-meta">{{item.deviceId}} · RSSI {{item.rssi}}</view>
     </view>
   </view>
@@ -48,48 +53,96 @@
         <text class="cell-label">振动 g</text>
       </view>
       <view class="cell">
-        <text class="cell-value">{{i}}</text>
+        <text class="cell-value {{i === '--' ? 'cell-dim' : ''}}">{{i}}</text>
         <text class="cell-label">电流 A</text>
       </view>
       <view class="cell">
-        <text class="cell-value">{{u}}</text>
+        <text class="cell-value {{u === '--' ? 'cell-dim' : ''}}">{{u}}</text>
         <text class="cell-label">电压 V</text>
       </view>
       <view class="cell">
-        <text class="cell-value">{{p}}</text>
+        <text class="cell-value {{p === '--' ? 'cell-dim' : ''}}">{{p}}</text>
         <text class="cell-label">功率 W</text>
       </view>
     </view>
     <view class="state-row">
       <text class="tag {{relay ? 'tag-green' : 'tag-gray'}}">继电器 {{relay ? 'ON' : 'OFF'}}</text>
-      <text class="tag {{alarm ? 'tag-red' : 'tag-green'}}">告警 {{alarm ? '触发' : '正常'}}</text>
-      <text class="tag {{diag ? 'tag-orange' : 'tag-green'}}">诊断 {{diag}}</text>
-      <text class="tag">故障掩码 0x{{mask}}</text>
+      <text class="tag {{alarm ? 'tag-red' : 'tag-green'}}">警告 {{alarm ? '触发' : '正常'}}</text>
+      <text class="tag {{diagStatusText ? 'tag-orange' : 'tag-green'}}">诊断 {{diagStatusText || '正常'}}</text>
     </view>
+  </view>
+
+  <!-- 警告检测（常驻显示：不管是否超限，每个检测指标单独一行） -->
+  <view class="card card-warn" wx:if="{{connected}}">
+    <view class="card-title warn-title">⚠ 警告检测</view>
+    <view class="warn-item" wx:for="{{alarmChecks}}" wx:key="name">
+      <text class="warn-label">{{item.name}}</text>
+      <text class="tag {{item.on ? 'tag-red' : 'tag-green'}}">{{item.on ? '超限' : '正常'}}</text>
+    </view>
+    <view class="warn-item" wx:if="{{alarm}}">
+      <text class="warn-label">等级</text>
+      <text class="tag tag-red">{{alarmLevelText}}</text>
+    </view>
+  </view>
+
+  <!-- 诊断检测（常驻显示：不管是否故障，每个检测指标单独一行） -->
+  <view class="card card-diag" wx:if="{{connected}}">
+    <view class="card-title diag-title">诊断检测</view>
+    <view class="warn-item" wx:for="{{diagChecks}}" wx:key="name">
+      <text class="warn-label">{{item.name}}</text>
+      <text class="tag {{item.on ? 'tag-orange' : 'tag-green'}}">{{item.on ? '异常' : '正常'}}</text>
+    </view>
+    <view class="warn-item" wx:if="{{diagStatusText}}">
+      <text class="warn-label">置信度</text>
+      <text class="tag tag-gray">{{conf}}%</text>
+    </view>
+    <view class="diag-msg" wx:if="{{dmsg}}">{{dmsg}}</view>
   </view>
 
   <!-- 控制区 -->
   <view class="card" wx:if="{{connected}}">
     <view class="card-title">控制</view>
     <view class="btn-row">
-      <button class="btn btn-primary" size="mini" bindtap="onQuery">查询数据</button>
-      <button class="btn {{relay ? 'btn-red' : 'btn-green'}}" size="mini" bindtap="onRelayToggle">继电器 {{relay ? '断开' : '吸合'}}</button>
-      <button class="btn btn-gray" size="mini" bindtap="onBeep">蜂鸣器 200ms</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onQuery">查询数据</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn {{relay ? 'btn-red' : 'btn-green'}}" size="mini" bindtap="onRelayToggle">继电器 {{relay ? '断开' : '吸合'}}</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onBeep">蜂鸣器 200ms</button>
     </view>
     <view class="btn-row">
-      <text class="ctrl-label">LED 单灯（点亮）</text>
-      <button class="btn btn-gray" size="mini" data-index="1" bindtap="onLedToggle">LED1</button>
-      <button class="btn btn-gray" size="mini" data-index="2" bindtap="onLedToggle">LED2</button>
-      <button class="btn btn-gray" size="mini" data-index="3" bindtap="onLedToggle">LED3</button>
-      <button class="btn btn-gray" size="mini" data-index="4" bindtap="onLedToggle">LED4</button>
+      <text class="ctrl-label">LED1：{{led1On ? '开' : '关'}}</text>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn {{led1On ? 'btn-green' : 'btn-gray'}}" size="mini" bindtap="onLed1On">开</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn {{led1On ? 'btn-red' : 'btn-gray'}}" size="mini" bindtap="onLed1Off">关</button>
     </view>
     <view class="btn-row">
-      <text class="ctrl-label">LED 位掩码</text>
-      <button class="btn btn-gray" size="mini" data-mask="15" bindtap="onLedMask">全亮</button>
-      <button class="btn btn-gray" size="mini" data-mask="0" bindtap="onLedMask">全灭</button>
-      <button class="btn btn-gray" size="mini" data-mask="5" bindtap="onLedMask">1+3</button>
-      <button class="btn btn-gray" size="mini" data-mask="10" bindtap="onLedMask">2+4</button>
+      <text class="ctrl-label">LED2：{{led2On ? '开' : '关'}}</text>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn {{led2On ? 'btn-green' : 'btn-gray'}}" size="mini" bindtap="onLed2On">开</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn {{led2On ? 'btn-red' : 'btn-gray'}}" size="mini" bindtap="onLed2Off">关</button>
     </view>
+    <view class="btn-row">
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onOpenHistory">历史数据</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onOpenConfig">设备配置</button>
+    </view>
+  </view>
+
+  <!-- 阈值设置 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="card-title">告警阈值设置</view>
+    <view class="th-row">
+      <text class="th-label">温度上限 ℃</text>
+      <input class="th-input" type="digit" value="{{thInputs.temp}}" data-field="temp" bindinput="onThInput" placeholder="60.0" />
+    </view>
+    <view class="th-row">
+      <text class="th-label">振动上限 g</text>
+      <input class="th-input" type="digit" value="{{thInputs.vib}}" data-field="vib" bindinput="onThInput" placeholder="3.0" />
+    </view>
+    <view class="th-row">
+      <text class="th-label">电流上限 A</text>
+      <input class="th-input" type="digit" value="{{thInputs.curr}}" data-field="curr" bindinput="onThInput" placeholder="5.0" />
+    </view>
+    <view class="btn-row">
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onGetTh">读取当前阈值</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-green" size="mini" bindtap="onSaveTh">保存到设备</button>
+    </view>
+    <view class="th-tip">保存后写入设备内部 Flash，重启不丢失；超限触发继电器断电保护</view>
   </view>
 
   <!-- 日志 -->

@@ -119,8 +119,8 @@ void BSP_BT24_Send(const uint8_t *buf, uint32_t len)
     if ((buf == NULL) || (len == 0U)) {
         return;
     }
-    /* 9600bps：每字节约 1.04ms，150B 长帧约 156ms，超时放宽到 500ms */
-    HAL_UART_Transmit(&huart2, (uint8_t *)buf, (uint16_t)len, 500U);
+    /* 9600bps：每字节约 1.04ms，GETCFG 全字段应答可达 700B 约 728ms，超时放宽到 2000ms */
+    HAL_UART_Transmit(&huart2, (uint8_t *)buf, (uint16_t)len, 2000U);
 }
 
 void BSP_BT24_SendString(const char *str)

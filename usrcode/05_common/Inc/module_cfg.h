@@ -24,7 +24,7 @@
 #define BSP_BEEP_ENABLE         1   /* 有源蜂鸣器驱动（PA5，NPN三极管驱动，高电平响） */
 #define BSP_LIGHT_SENSOR_ENABLE 0   /* 光敏传感器驱动（ADC3_IN5/PF7，查询式单次转换） */
 #define BSP_DHT11_ENABLE        0   /* DHT11温湿度驱动——F407VET6无PG9引脚，且SHT30已提供温湿度，停用 */
-#define BSP_FLASH_CONFIG_ENABLE 1   /* 内部Flash配置存储（Sector11@0x080E0000，存告警阈值，上电加载） */
+#define BSP_FLASH_CONFIG_ENABLE 1   /* 内部Flash配置存储（阈值=Sector6@0x08040000，网络配置=Sector7@0x08060000，上电加载；原Sector11在512KB芯片上不存在，已修正） */
 #define BSP_I2C_SOFT_ENABLE     1   /* 共享软件I2C总线驱动（PB6=SCL/PB7=SDA，为SHT30/QMI8658/INA226提供主机时序） */
 #define BSP_SHT30_ENABLE        1   /* SHT30温湿度传感器驱动（软件I2C，7位地址0x44，ADDR接GND；依赖BSP_I2C_SOFT_ENABLE+BSP_DELAY_ENABLE） */
 #define BSP_QMI8658_ENABLE      1   /* QMI8658六轴IMU驱动（软件I2C，7位地址0x6B，本模块AD0板上固定接地；依赖BSP_I2C_SOFT_ENABLE） */
@@ -133,6 +133,10 @@
 #define APP_KEY_MATRIX_ENABLE   1   /* 矩阵键盘应用任务（消抖+页面切换/继电器/蜂鸣器/阈值设置，受APP_TASKS_ENABLE约束，依赖BSP_KEY_MATRIX_ENABLE=1） */
 #define APP_WIFI_ENABLE         0   /* WiFi上报任务（ESP8266连路由器+TCP上报温湿度，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1） */
 #define APP_MQTT_ENABLE         1   /* MQTT上云任务（ESP8266+Paho MQTT连接云平台，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1，与APP_WIFI_ENABLE互斥） */
+#define APP_NETCFG_ENABLE       1   /* 网络配置模块（WiFi热点+云连接参数运行时配置，存内部Flash Sector7，供MQTT任务/小程序GETCFG-SETCFG使用；依赖BSP_FLASH_CONFIG_ENABLE=1） */
+#if APP_NETCFG_ENABLE && !BSP_FLASH_CONFIG_ENABLE
+#error "依赖缺失：APP_NETCFG_ENABLE 依赖 BSP_FLASH_CONFIG_ENABLE=1"
+#endif
 #define APP_CONN_ENGINE_ENABLE  1   /* 连接引擎（app_conn_engine）：把MQTT连接状态注册为plat_conn连接器并周期刷新（依赖PLAT_CONN_ENABLE+APP_MQTT_ENABLE） */
 #define APP_BT24_ENABLE         1   /* 蓝牙透传任务（BT24Task）：连接后周期上报传感器快照JSON + 解析小程序下行命令（QUERY/RELAY/LED/PING/BEEP），依赖BSP_BT24_ENABLE，与MQTT共用业务入口 */
 #define APP_PLAT_TASK_ENABLE    1   /* 平台服务任务（PlatSvcTask）：周期plat_devmgr_process_all+连接器状态刷新（依赖PLAT_DEVMGR_ENABLE） */

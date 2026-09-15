@@ -153,6 +153,7 @@ void BSP_ESP8266_EnterMQTTMode(void);
  *         与 BSP_ESP8266_PollIPD() 互斥，不能同时使用
  */
 uint32_t BSP_ESP8266_TCPRead(uint8_t *data_buf, uint32_t len, uint32_t timeout_ms);
+uint32_t BSP_ESP8266_TCPReadFull(uint8_t *data_buf, uint32_t len, uint32_t timeout_ms);
 
 /**
  * @brief  MQTT专用：查询TCP连接是否仍然存活

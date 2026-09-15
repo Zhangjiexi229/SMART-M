@@ -6,7 +6,8 @@
  *  功能：
  *    - 周期上报诊断快照（温度/湿度/振动/电流/电压/功率/继电器/告警/故障）
  *      JSON 格式，一行一帧（\r\n 结尾），经 BLE 透传通道发给微信小程序
- *    - 解析小程序下行 JSON 命令：QUERY / RELAY / LED / PING / BEEP
+ *    - 解析小程序下行 JSON 命令：QUERY / RELAY / LED / PING / BEEP /
+ *      GETTH / SETTH / GETCFG / SETCFG
  *    - 通过 AT+NOTI1 使模块在手机连接时上报 OK+CONN<mac>，据此判断
  *      是否处于透传模式，仅在连接后主动上报，避免 AT 模式下数据被
  *      模块当作命令解析
@@ -16,8 +17,15 @@
  *           "relay":0,"alarm":0,"diag":0,"mask":0}
  *    命令：{"cmd":"QUERY"} / {"cmd":"RELAY","val":1} /
  *          {"cmd":"LED","mask":5} / {"cmd":"LED","index":1,"state":1} /
- *          {"cmd":"PING"} / {"cmd":"BEEP","ms":200}
+ *          {"cmd":"PING"} / {"cmd":"BEEP","ms":200} /
+ *          {"cmd":"GETTH"} / {"cmd":"SETTH","temp":60.0,"vib":3.0,"curr":5.0} /
+ *          {"cmd":"GETCFG"} /
+ *          {"cmd":"SETCFG","wifi_ssid":"...","wifi_password":"...",
+ *           "broker_host":"...","broker_ip":"...","broker_port":1883,
+ *           "client_id":"...","username":"...","password":"...","device_id":"..."}
  *    应答：{"ok":1,"cmd":"RELAY","val":1} / {"ok":0,"err":"..."}
+ *    GETCFG 应答含全部网络配置字段（字符串已做 JSON 转义）。
+ *    SETCFG 缺省字段保留当前值，保存成功后 MQTT 任务自动按新配置重连。
  ******************************************************************************
  */
 #ifndef APP_BT24_H

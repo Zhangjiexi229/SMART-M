@@ -1,0 +1,114 @@
+<view class="container">
+
+  <!-- 连接状态 -->
+  <view class="card">
+    <view class="status-row">
+      <text class="status-dot {{adapterReady ? 'dot-green' : 'dot-gray'}}"></text>
+      <text>蓝牙: {{adapterReady ? '已就绪' : '未打开'}}</text>
+      <text class="status-dot {{connected ? 'dot-green' : 'dot-gray'}}" style="margin-left:24rpx"></text>
+      <text>连接: {{connected ? '已连接' : '未连接'}}</text>
+    </view>
+    <view class="status-row" wx:if="{{deviceName}}">
+      <text>设备: {{deviceName}}</text>
+    </view>
+    <view class="btn-row">
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onOpenAdapter" wx:if="{{!adapterReady}}">打开蓝牙</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-primary" size="mini" bindtap="onStartScan" wx:if="{{adapterReady && !connected}}">{{discovering ? '扫描中...' : '扫描设备'}}</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onResetAdapter" wx:if="{{adapterReady && !connected}}">重置蓝牙</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-red" size="mini" bindtap="onDisconnect" wx:if="{{connected}}">断开连接</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onClearLog" wx:if="{{logs.length}}">清空日志</button>
+    </view>
+  </view>
+
+  <!-- 设备列表 -->
+  <view class="card" wx:if="{{adapterReady && !connected}}">
+    <view class="card-title">附近设备（BT24）</view>
+    <view class="filter-row">
+      <switch checked="{{showAllDevices}}" bindchange="onToggleAll" color="#1f6feb" />
+      <text class="filter-label">显示全部蓝牙设备（部分模块广播不含 FFE0，需全量扫描）</text>
+    </view>
+    <view wx:if="{{devices.length === 0}}" class="empty">暂无设备：请确认模块已上电、靠近手机；若一个设备都没有，请检查手机系统定位是否开启（Android 扫描 BLE 需定位服务）</view>
+    <view class="device-item" wx:for="{{devices}}" wx:key="deviceId" bindtap="onConnect" data-id="{{item.deviceId}}">
+      <view class="device-name">{{item.isBt24 ? 'BT24 · ' : ''}}{{item.name}}</view>
+      <view class="device-meta">{{item.deviceId}} · RSSI {{item.rssi}}</view>
+    </view>
+  </view>
+
+  <!-- WiFi 配置 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="card-title">WiFi 连接</view>
+    <view class="cfg-row">
+      <text class="cfg-label">热点名称</text>
+      <input class="cfg-input" maxlength="31" value="{{wifi_ssid}}" data-field="wifi_ssid" bindinput="onInput" placeholder="2.4GHz WiFi 名称" />
+    </view>
+    <view class="cfg-row">
+  <text class="cfg-label">热点密码</text>
+  <view style="display:flex;align-items:center;">
+      <input class="cfg-input" password="{{!showWifiPwd}}" maxlength="63" value="{{wifi_password}}" data-field="wifi_password" bindinput="onInput" placeholder="WiFi 密码（可留空）" style="flex:1;" />
+      <button bindtap="toggleWifiPwd" size="mini" style="margin-left:10rpx;">{{showWifiPwd ? '隐藏' : '显示'}}</button>
+  </view>
+</view>
+
+    <view class="cfg-tip">ESP8266 将以该热点接入网络；密码为空表示开放网络</view>
+  </view>
+
+  <!-- 云平台配置 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="card-title">云平台（华为云 IoTDA MQTT）</view>
+    <view class="cfg-row">
+      <text class="cfg-label">Broker 地址</text>
+      <input class="cfg-input" maxlength="95" value="{{broker_host}}" data-field="broker_host" bindinput="onInput" placeholder="iot-mqtt 域名（与IP二选一）" />
+    </view>
+    <view class="cfg-row">
+      <text class="cfg-label">Broker IP</text>
+      <input class="cfg-input" maxlength="15" value="{{broker_ip}}" data-field="broker_ip" bindinput="onInput" placeholder="IPv4 直连地址（可留空）" />
+    </view>
+    <view class="cfg-row">
+      <text class="cfg-label">端口</text>
+      <input class="cfg-input" type="number" maxlength="5" value="{{broker_port}}" data-field="broker_port" bindinput="onInput" placeholder="1883" />
+    </view>
+    <view class="cfg-row">
+      <text class="cfg-label">ClientId</text>
+      <input class="cfg-input" maxlength="63" value="{{client_id}}" data-field="client_id" bindinput="onInput" placeholder="设备密钥文件中的 clientId" />
+    </view>
+    <view class="cfg-row">
+      <text class="cfg-label">用户名</text>
+      <input class="cfg-input" maxlength="63" value="{{username}}" data-field="username" bindinput="onInput" placeholder="密钥文件中的 username" />
+    </view>
+    <view class="cfg-row">
+  <text class="cfg-label">密码</text>
+  <view style="display:flex;align-items:center;">
+    <input class="cfg-input" password="{{!showMqttPwd}}" maxlength="95" value="{{password}}" data-field="password" bindinput="onInput" placeholder="密钥文件中的 password" style="flex:1;" />
+    <button bindtap="toggleMqttPwd" size="mini" style="margin-left:10rpx;">{{showMqttPwd ? '隐藏' : '显示'}}</button>
+  </view>
+</view>
+
+    <view class="cfg-row">
+      <text class="cfg-label">设备ID</text>
+      <input class="cfg-input" maxlength="63" value="{{device_id}}" data-field="device_id" bindinput="onInput" placeholder="华为云设备ID" />
+    </view>
+    <view class="cfg-tip">Broker 地址与 IP 至少填一个；IP 填了就优先用 IP 直连（可绕过 IPv6 域名解析问题）</view>
+  </view>
+
+  <!-- 操作 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="btn-row">
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-gray" size="mini" bindtap="onGetCfg" disabled="{{loadingCfg}}">{{loadingCfg ? '读取中...' : '读取当前配置'}}</button>
+      <button hover-class="btn-pressed" hover-stay-time="80" class="btn btn-green" size="mini" bindtap="onSaveCfg" disabled="{{saving}}">{{saving ? '保存中...' : '保存到设备'}}</button>
+    </view>
+    <view class="cfg-tip">
+      保存后写入设备内部 Flash（重启不丢失），MQTT 任务自动按新配置重连，无需重启设备。
+      注意：WiFi 参数改错会导致设备短暂离线，请确保热点与云信息正确。
+    </view>
+    <view class="cfg-tip warn-tip">字符串字段不能包含引号 " 和反斜杠 \</view>
+  </view>
+
+  <!-- 日志 -->
+  <view class="card" wx:if="{{logs.length}}">
+    <view class="card-title">通信日志</view>
+    <scroll-view scroll-y class="log-box">
+      <view wx:for="{{logs}}" wx:key="index" class="log-line">{{item}}</view>
+    </scroll-view>
+  </view>
+
+</view>

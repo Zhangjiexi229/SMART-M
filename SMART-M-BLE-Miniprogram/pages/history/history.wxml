@@ -1,0 +1,48 @@
+<view class="container">
+  <view class="card">
+    <view class="head">
+      <text class="head-title">历史遥测记录</text>
+      <text class="head-meta">共 {{count}} 条 · 最新 {{latest}}</text>
+    </view>
+    <view class="head-tip">仅记录连接期间收到的遥测数据（手机本地存储，最多300条）</view>
+    <view class="btn-row">
+      <button class="btn btn-primary" size="mini" bindtap="onBack">返回</button>
+      <button class="btn btn-red" size="mini" bindtap="onClear" wx:if="{{count}}">清空历史</button>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{records.length === 0}}">
+    <view class="empty">暂无历史数据，请先连接设备接收遥测</view>
+  </view>
+
+  <view class="card" wx:if="{{records.length}}">
+    <scroll-view scroll-y class="table-scroll">
+      <view class="table">
+        <view class="tr th">
+          <text class="td time">时间</text>
+          <text class="td">温度</text>
+          <text class="td">湿度</text>
+          <text class="td">振动</text>
+          <text class="td">电流</text>
+          <text class="td">电压</text>
+          <text class="td">功率</text>
+          <text class="td">继</text>
+          <text class="td">警</text>
+          <text class="td">诊</text>
+        </view>
+        <view class="tr" wx:for="{{records}}" wx:key="ts">
+          <text class="td time">{{item.time}}</text>
+          <text class="td">{{item.temp}}℃</text>
+          <text class="td">{{item.hum}}%</text>
+          <text class="td">{{item.vib}}g</text>
+          <text class="td">{{item.cur === null || item.cur === undefined ? '--' : item.cur + 'A'}}</text>
+          <text class="td">{{item.vol === null || item.vol === undefined ? '--' : item.vol + 'V'}}</text>
+          <text class="td">{{item.pwr === null || item.pwr === undefined ? '--' : item.pwr + 'W'}}</text>
+          <text class="td {{item.relay ? 'txt-green' : 'txt-gray'}}">{{item.relay ? 'ON' : 'OFF'}}</text>
+          <text class="td {{item.alarm ? 'txt-red' : 'txt-gray'}}">{{item.alarm ? '!' : '-'}}</text>
+          <text class="td {{item.diag ? 'txt-orange' : 'txt-gray'}}">{{item.diag ? item.diag : '-'}}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</view>

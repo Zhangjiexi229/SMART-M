@@ -32,7 +32,7 @@
 
 /* ========== UART3 缓冲配置（与UART1同规格，独立缓冲区） ========== */
 #define BSP_UART3_RX_DMA_BUF_SIZE   256   /*!< UART3 DMA接收环形缓冲大小（字节） */
-#define BSP_UART3_RX_RING_BUF_SIZE  512   /*!< UART3 软件环形缓冲大小（字节） */
+#define BSP_UART3_RX_RING_BUF_SIZE  1024  /*!< UART3 软件环形缓冲大小（字节），1024 降低任务忙时丢字节概率 */
 
 /* ==================== UART1 API ==================== */
 

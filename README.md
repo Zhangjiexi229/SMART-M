@@ -1,8 +1,8 @@
 # SMART-M — STM32F407 工业电机智能监测系统
 
-> **Version 4.0** ｜ 基于 STM32F407VET6 + FreeRTOS 的边缘智能监测终端
+> **Version 5.0** ｜ 基于 STM32F407VET6 + FreeRTOS 的边缘智能监测终端
 > 面向工业电机运行状态监测的毕业设计项目：多传感器采集 → 振动故障诊断 → 告警联动保护 → 华为云 IoTDA 远程监控。
-> **v4.0 亮点**：引脚与连接方式进阶（三传感器共享 I2C 总线 + INA226 换新模块）；新增 DX-BT24 蓝牙透传（小程序远程监控）与 SD 卡数据落盘（FatFs CSV）；WiFi 断线感知升级为三态检测。
+> **v5.0 亮点**：微信小程序 v1.11 完整版（首页实时遥测 / 设备配置 / 历史数据三页面）+ DX-BT24 蓝牙模块命令集扩充（新增 GETTH/SETTH 阈值在线修改、GETCFG/SETCFG 网络配置在线修改）；网络配置运行时化（app_netcfg，存内部 Flash 掉电不丢，保存后 MQTT 自动重连）。
 
 ---
 
@@ -10,6 +10,8 @@
 
 - [项目简介](#项目简介)
 - [功能特性](#功能特性)
+- [v5.0 更新内容](#v50-更新内容)
+- [v4.1 更新内容](#v41-更新内容)
 - [v4.0 更新内容](#v40-更新内容)
 - [v3.0 更新内容](#v30-更新内容)
 - [v2.0 更新内容](#v20-更新内容)
@@ -28,7 +30,7 @@
 
 ## 项目简介
 
-SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终端系统。系统以 STM32F407VET6 为主控，运行 FreeRTOS 实时操作系统，通过温湿度、六轴姿态、电源电流等多类传感器实时采集电机运行参数，在边缘端完成振动特征提取与故障诊断，实现**过热 / 过载 / 异常振动 / 不平衡 / 轴承故障**的自动识别与告警联动（继电器断电保护 + 蜂鸣器报警），并借助 ESP8266 通过 MQTT 协议将数据上报至**华为云 IoTDA** 平台，支持远程监控与命令下发；同时支持 **DX-BT24 蓝牙透传**（微信小程序本地监控）与 **SD 卡数据落盘**（本地 CSV 记录）。
+SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终端系统。系统以 STM32F407VET6 为主控，运行 FreeRTOS 实时操作系统，通过温湿度、六轴姿态、电源电流等多类传感器实时采集电机运行参数，在边缘端完成振动特征提取与故障诊断，实现**过热 / 过载 / 异常振动 / 不平衡 / 轴承故障**的自动识别与告警联动（继电器断电保护 + 蜂鸣器报警），并借助 ESP8266 通过 MQTT 协议将数据上报至**华为云 IoTDA** 平台，支持远程监控与命令下发；同时支持 **DX-BT24 蓝牙透传**（微信小程序本地监控：实时遥测 / 设备配置 / 历史数据）与 **SD 卡数据落盘**（本地 CSV 记录）。
 
 系统采用 **`01_app / 02_svc / 03_plat / 04_bsp / 05_common` 五层软件架构**，按"应用 — 服务 — 平台 — 板级 — 公共"逐层解耦，全部模块由条件编译开关统一管控，可按实际硬件裁剪固件，代码可读性与可维护性兼顾。
 
@@ -54,7 +56,7 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 - 三路独立告警阈值：**温度（℃）/ 振动（g）/ 电流（A）**；
 - 迟滞恢复机制，防止阈值边界抖动误报；
 - 过流 / 超限自动断开**继电器**（串接电机电源回路）并驱动**蜂鸣器**报警；
-- 阈值可通过 4×4 矩阵键盘现场调整，并持久化到 STM32 **内部 Flash**（Sector11），重启不丢失。
+- 阈值可通过 4×4 矩阵键盘**或微信小程序**现场调整，并持久化到 STM32 **内部 Flash**（Sector6 @ 0x08040000），重启不丢失；
 
 ### 云平台接入（WiFi + MQTT）
 - **ESP8266 + Paho MQTT Embedded C** 连接华为云 IoTDA（非加密 1883 端口，IPv4 直连）；
@@ -64,10 +66,13 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 - **全链路断线自动重连**：指数退避（1s → 30s 封顶），连续 5 次失败自动复位 ESP8266 模块；
 - **WiFi 断线感知（三态）**：异步检测 `WIFI DISCONNECT` 事件、`AT+CIPSTATUS` 二次确认真实在线、断线立即重连；CIPSTATUS 查询失败时信任 GetIP 结果，避免 AT 瞬时无响应造成反复重连。
 
-### 蓝牙透传（DX-BT24 BLE）
+### 蓝牙透传（DX-BT24 BLE + 微信小程序）
 - **USART2（PA2/PA3）9600bps** 连接 DX-BT24 BLE 透传模块；
 - 连接后**周期上报传感器快照 JSON**（一行一帧），经 BLE 通道发给微信小程序；
-- 解析小程序下行命令：**QUERY / RELAY / LED / PING / BEEP**，并回传应答；
+- 解析小程序下行命令：**QUERY / RELAY / LED / PING / BEEP / GETTH / SETTH / GETCFG / SETCFG**，并回传应答；
+- **告警阈值在线修改**：小程序「设备配置」页通过 `GETTH / SETTH` 读取/修改温度 / 振动 / 电流三路阈值（存内部 Flash Sector6，掉电不丢失）；
+- **WiFi / 云参数在线配置**：小程序「设备配置」页通过 `GETCFG / SETCFG` 读取/修改 WiFi 热点名/密码与华为云连接参数（Broker 地址/IP/端口、ClientId、用户名、密码、设备ID），写入内部 Flash（Sector7 @ 0x08060000），掉电不丢失；保存后 MQTT 任务自动按新配置重连，无需重启设备；
+- 微信小程序 **v1.11 三页面**：首页（实时遥测 + 命令控制）、设备配置（GETTH/SETTH + GETCFG/SETCFG）、历史数据；
 - 与 MQTT 共用业务入口，云端 / 本地双通道监控。
 
 ### SD 卡数据存储（FatFs）
@@ -78,6 +83,49 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 ### 人机交互
 - **4×4 矩阵键盘**：页面切换、继电器控制、蜂鸣器测试、告警阈值设置；
 - **OLED（SSD1306）**：实时数据 / 阈值配置 / 系统状态三页面显示，告警时闪烁提示。
+
+---
+
+## v5.0 更新内容
+
+### 1. 微信小程序完整版 v1.11（三页面）
+- **首页 `pages/index`**：蓝牙扫描 / 连接 / 断开 / 重置，实时接收遥测快照 JSON（温度 / 湿度 / 振动 / 电流 / 电压 / 功率 / 继电器 / 告警 / 故障位图），支持下发 **QUERY / RELAY / LED / PING / BEEP** 命令并显示应答；
+- **设备配置页 `pages/config`**：在线读取 / 修改 **告警阈值（GETTH / SETTH）**与 **WiFi / 华为云连接参数（GETCFG / SETCFG）**，保存后 MQTT 任务自动按新配置重连，无需重新烧录固件；
+- **历史数据页 `pages/history`**：查看设备端上报的历史遥测记录；
+- 申请蓝牙权限（`scope.bluetooth`），适配部分模块广播不含 `FFE0` 的"显示全部设备"开关；
+- 工程内含 `project.config.json` 与迭代版本压缩包归档（`SMART-M-BLE-Miniprogram-v1.1 ~ v1.11.zip`），`SMART-M-BLE-Miniprogram/` 为最新 v1.11 源码。
+
+### 2. 蓝牙模块命令集扩充（app_bt24）
+- 新增 **GETTH / SETTH**：三路告警阈值（温度 / 振动 / 电流）经 BLE 在线读写，写内部 Flash Sector6，应答含当前阈值（1 位小数）；
+- 新增 **GETCFG / SETCFG**：网络配置（WiFi 热点 + 华为云 Broker / 鉴权参数）经 BLE 在线读写，缺省字段保留原值，存内部 Flash Sector7；
+- **AT+NOTI1 连接判定**：模块在手机连接时上报 `OK+CONN<mac>`，据此判断是否处于透传模式，仅连接后主动上报，避免 AT 模式下数据被模块当作指令解析；
+- 行缓冲 256 → 1024 字节、任务栈 2KB → 4KB，容纳大帧与 JSON 解析。
+
+### 3. 网络配置运行时化（app_netcfg）
+- 新增 `app_netcfg` 模块（`01_app`）：把 WiFi 热点名/密码、Broker 地址/IP/端口、ClientId/用户名/密码、设备 ID 从**编译期宏**（`app_mqtt.h`）提升为**运行时配置**，统一存内部 Flash **Sector7 @ 0x08060000**，`app_mqtt.h` 编译期宏作为出厂默认值，首次上电 / Flash 无有效配置时回退默认；
+- 并发安全：`g_netcfg` 仅 MQTT 任务只读，唯一写入路径 `APP_NetCfg_Apply()` 在 `osKernelLock` 临界区内 memcpy（512B），避免任务调度期间读到撕裂数据；
+- 保存后置"已修改"标记，MQTT 任务检测后自动按新配置强制重连（WiFi → TCP → MQTT）。
+
+### 4. 内部 Flash 配置存储统一（BSP_FLASH_CONFIG）
+- 新增 `bsp_flash_config` 驱动：阈值（Sector6 @ 0x08040000）+ 网络配置（Sector7 @ 0x08060000）统一管理，上电加载；
+- 修正阈值存储扇区：原 Sector11 @ 0x080E0000 在本板 512KB Flash（STM32F407VET6）上不存在，保存恒失败；修正为 Sector6，阈值现在可真正掉电保存；
+- 新开关：`BSP_FLASH_CONFIG_ENABLE`、`APP_NETCFG_ENABLE`（`module_cfg.h`）。
+
+### 5. 配套重构与修复
+- `app_mqtt.c` 重构：适配运行时网络配置（默认值 → g_netcfg 生效），保存配置后自动重连；
+- `mqtt_port.c`、`bsp_esp8266.c/h`、`bsp_uart.h`、`ring_buffer.c`、`MQTTClient.c`（Paho）同步更新；
+- README 更新至 v5.0。
+
+---
+
+## v4.1 更新内容
+
+### 1. 小程序「设备配置」页（WiFi / 云参数在线修改）
+- **小程序新增「设备配置」页**（首页 → 设备配置）：可在线修改 WiFi 热点名/密码、华为云 Broker 地址/IP/端口、ClientId/用户名/密码、设备ID；
+- **新增 BLE 命令 GETCFG / SETCFG**（`app_bt24.c`）：查询/修改网络配置，缺省字段保留原值，应答 `{"ok":1,"cmd":"SETCFG","saved":1}`；
+- **网络配置运行时化**：新增 `app_netcfg` 模块（`01_app`），配置存内部 Flash **Sector7 @ 0x08060000**，`app_mqtt.h` 编译期宏作为出厂默认值，首次上电/清空 Flash 时回退默认；
+- **保存后自动重连**：MQTT 任务检测到配置修改标记后强制重连（WiFi → TCP → MQTT），无需重启设备；BT24 行缓冲 256→1024、任务栈 2KB→4KB 以容纳大帧与解析；
+- **修正阈值存储扇区**：原阈值存储 Sector11 @ 0x080E0000 在本板 512KB Flash（STM32F407VET6）上不存在，保存恒失败；修正为 **Sector6 @ 0x08040000**，阈值现在可真正掉电保存。
 
 ---
 
@@ -180,7 +228,7 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 │  │ 对象模型│设备/服务管理器│连接器抽象│板级管理│OLED 对象化     │  │
 │  ├─────────── 04_bsp 板级驱动层 ────────────────────────────┤  │
 │  │ 共享I2C(PB6/PB7)│SHT30│QMI8658│INA226│ESP8266│BT24│SD    │  │
-│  │ 矩阵键盘│OLED│继电器│蜂鸣器                              │  │
+│  │ 矩阵键盘│OLED│继电器│蜂鸣器│Flash配置(Sector6/7)          │  │
 │  ├─────────── 05_common 公共层 ─────────────────────────────┤  │
 │  │        环形缓冲区 │ 通用工具 │ 模块配置开关                │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -205,13 +253,13 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 | 温湿度 | SHT30 | 共享软件 I2C（PB6=SCL / PB7=SDA） | 地址 0x44 |
 | 六轴 IMU | QMI8658 | 共享软件 I2C | 地址 0x6B（AD0 接地） |
 | 电源监测 | INA226 | 共享软件 I2C | 地址 0x40（A0/A1 接 GND），0.01Ω R010 采样电阻 |
-| 蓝牙透传 | DX-BT24 | USART2（PA2/PA3），9600bps | BLE 透传，微信小程序本地监控 |
+| 蓝牙透传 | DX-BT24 | USART2（PA2/PA3），9600bps | BLE 透传，微信小程序本地监控（实时遥测/设备配置/历史数据） |
 | 数据存储 | TF 卡 | SDIO 4bit（PC8-PC12 + PD2） | FatFs，周期 CSV 落盘 |
 | 显示屏 | OLED SSD1306 | 软件 I2C（PD6=SCL / PD7=SDA） | 实时/阈值/状态三页面 |
 | 键盘 | 4×4 矩阵键盘 | 行 PE2/PE6/PE7/PE10，列 PE8/PE9/PE11/PE12 | 行扫描 + 列读取 |
 | 继电器 | 高电平吸合 | PA4 推挽输出 | COM/NO 串接电机电源回路 |
 | 蜂鸣器 | 有源 | PA5（NPN 驱动） | 高电平响，外接 |
-| 存储 | STM32 内部 Flash | Sector11 @ 0x080E0000 | 告警阈值持久化 |
+| 存储 | STM32 内部 Flash | 阈值 Sector6 @ 0x08040000；网络配置 Sector7 @ 0x08060000 | 告警阈值 / WiFi+云连接参数持久化（v4.1 起） |
 | 调试串口 | USART1 | PA9/PA10，115200 | 板载 USB 转串口（printf） |
 
 > 详细引脚与功能配置见 [`文档/器件引脚与功能配置总表.md`](文档/器件引脚与功能配置总表.md)
@@ -222,10 +270,10 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 
 | 层级 | 目录 | 职责 | 主要模块 |
 |---|---|---|---|
-| **应用层** | `usrcode/01_app` | FreeRTOS 任务与业务入口、通信协议 | `app_tasks` `app_mqtt` `app_wifi` `app_bt24` `app_sd` `app_oled` `app_key_matrix` `protocol/` |
+| **应用层** | `usrcode/01_app` | FreeRTOS 任务与业务入口、通信协议 | `app_tasks` `app_mqtt` `app_wifi` `app_bt24` `app_sd` `app_netcfg` `app_oled` `app_key_matrix` `protocol/` |
 | **服务层** | `usrcode/02_svc` | 业务服务与数据中枢 | `app_diag` `app_alarm` `app_fault` `app_config` `app_sensor` `app_relay` `app_offline` `app_filter` `app_vibration` |
 | **平台层** | `usrcode/03_plat` | 对象化平台框架（对象模型 / 设备·服务管理器 / 连接器抽象 / 板级管理 / OLED 对象化） | `plat_obj` `plat_devmgr` `plat_svcmgr` `plat_conn` `plat_brdmgr` `plat_oled` |
-| **板级层** | `usrcode/04_bsp` | 外设驱动 | `bsp_i2c_soft` `bsp_sht30` `bsp_qmi8658` `bsp_ina226` `bsp_esp8266` `bsp_bt24` `bsp_sd` `bsp_oled` `bsp_key_matrix` 等 |
+| **板级层** | `usrcode/04_bsp` | 外设驱动 | `bsp_i2c_soft` `bsp_sht30` `bsp_qmi8658` `bsp_ina226` `bsp_esp8266` `bsp_bt24` `bsp_sd` `bsp_flash_config` `bsp_oled` `bsp_key_matrix` 等 |
 | **公共层** | `usrcode/05_common` | 公共组件与全局开关 | `ring_buffer` `common` **`module_cfg`** |
 
 **模块裁剪**：所有模块在 [`usrcode/05_common/Inc/module_cfg.h`](usrcode/05_common/Inc/module_cfg.h) 中通过 `#define XXX_ENABLE 1/0` 统一管控，禁用模块不参与编译，节省 Flash 与 RAM；模块间依赖关系在编译期通过 `#error` 强制检查。
@@ -244,10 +292,10 @@ SMART-M 是一套面向**工业电机运行状态监测**的嵌入式智能终�
 | `振动特征提取` | 1s 窗口 | RMS / 峰值 / 峭度 / 峰值因子 |
 | `故障诊断` | — | 规则引擎，输出健康状态与故障位图 |
 | `告警联动` | — | 三路阈值比较 + 继电器断电 + 蜂鸣器 |
-| `MQTT 上云` | 3s 上报 | ESP8266 联网（IPv4 直连 + 退避重连 + 三态断线感知），Paho MQTT 上报/下行命令处理 |
+| `MQTT 上云` | 3s 上报 | ESP8266 联网（IPv4 直连 + 退避重连 + 三态断线感知），Paho MQTT 上报/下行命令处理；按运行时网络配置（g_netcfg）重连 |
 | `断网补传` | — | 断网数据缓存（RAM 16 条），重连批量补发 |
 | `PlatSvcTask` | 周期 | 平台服务调度，周期驱动 MQTT 连接器状态刷新 |
-| `BT24Task` | — | 蓝牙透传：周期上报快照 JSON + 解析小程序命令（QUERY/RELAY/LED/PING/BEEP） |
+| `BT24Task` | — | 蓝牙透传：周期上报快照 JSON + 解析小程序命令（QUERY/RELAY/LED/PING/BEEP/GETTH/SETTH/GETCFG/SETCFG） |
 | `SD 存储` | 5s | FatFs 挂载 + 诊断快照 CSV 落盘（256KB 滚动） |
 | `矩阵键盘` | — | 消抖 + 页面切换 / 继电器 / 阈值设置 |
 | `OLED 显示` | — | 实时 / 阈值 / 状态三页面 + 告警闪烁 |
@@ -265,11 +313,13 @@ SMART-M/
 ├── Drivers/                 # STM32 HAL 库
 ├── Middlewares/             # FreeRTOS / Paho MQTT / FreeModbus / FatFs 中间件
 ├── usrcode/                 # 用户代码（核心业务，五层架构）
-│   ├── 01_app/              # 应用层：任务、业务入口（MQTT/BT24/SD）、protocol 协议子目录
+│   ├── 01_app/              # 应用层：任务、业务入口（MQTT/BT24/SD/NetCfg）、protocol 协议子目录
 │   ├── 02_svc/              # 服务层：诊断、告警、故障、配置、快照、离线补传
 │   ├── 03_plat/             # 平台层：对象模型 / 设备·服务管理器 / 连接器抽象 / OLED 对象化
-│   ├── 04_bsp/              # 板级层：外设驱动（共享I2C/传感器/ESP8266/BT24/SD/OLED/键盘）
+│   ├── 04_bsp/              # 板级层：外设驱动（共享I2C/传感器/ESP8266/BT24/SD/Flash配置/OLED/键盘）
 │   └── 05_common/           # 公共层：环形缓冲、工具、模块配置开关
+├── SMART-M-BLE-Miniprogram/ # 微信小程序 v1.11 源码（首页/设备配置/历史数据三页面）
+├── SMART-M-BLE-Miniprogram-v1.x.zip  # 小程序迭代版本压缩包归档（v1.1 ~ v1.11）
 ├── cmake/                   # CMake 工具链与 CubeMX 集成
 ├── 文档/                    # 实验报告、接线图、截图等资料
 ├── SMART-M.ioc              # STM32CubeMX 工程配置
@@ -287,6 +337,7 @@ SMART-M/
 - **ARM GNU 工具链** `gcc-arm-none-eabi`（≥ 10.3）
 - **CMake** ≥ 3.22 + **Ninja**
 - 烧录工具：**STM32CubeProgrammer** 或 ST-Link 配套工具
+- 微信开发者工具（导入 `SMART-M-BLE-Miniprogram/` 调试小程序）
 - （可选）VS Code + clangd 用于代码索引
 
 ## 构建与烧录
@@ -309,10 +360,10 @@ STM32_Programmer_CLI -c port=SWD -w build/Debug/SMART-M.hex
 ## 快速上手
 
 1. **云端准备**：按 [`华为云IoTDA配置指南.md`](华为云IoTDA配置指南.md) 开通华为云 IoTDA（免费单元即可），创建产品（MQTT + JSON）、定义物模型服务（`Sensor`：`temperature` / `humidity` 属性，`LED_Control` / `RELAY_Control` 命令）、注册设备；
-2. **修改配置**：将 [`usrcode/01_app/Inc/app_mqtt.h`](usrcode/01_app/Inc/app_mqtt.h) 中 WiFi 名称/密码、华为云 `clientId / username / password`、设备 ID 替换为你的实际参数（可用华为云在线鉴权工具生成；`MQTT_BROKER_IP` 可留默认，若域名解析正常也可改用域名接入）；
+2. **修改配置**：将 [`usrcode/01_app/Inc/app_mqtt.h`](usrcode/01_app/Inc/app_mqtt.h) 中 WiFi 名称/密码、华为云 `clientId / username / password`、设备 ID 替换为你的实际参数（可用华为云在线鉴权工具生成；`MQTT_BROKER_IP` 可留默认，若域名解析正常也可改用域名接入）；**v4.1 起也可在烧录后通过小程序「设备配置」页在线修改**（写入内部 Flash，无需重新烧录）；
 3. **编译烧录**：按上文构建流程生成固件并烧录；
 4. **验证**：上电后 ESP8266 自动连网 → MQTT 连接 → 周期上报属性；在华为云控制台可看到实时数据，下发 `LED_Control` / `RELAY_Control` 命令可远程控制板载 LED / 继电器；
-5. **蓝牙调试**：手机打开微信小程序连接 DX-BT24，接收实时遥测 JSON，可下发 QUERY / RELAY / LED / PING / BEEP 命令；
+5. **蓝牙调试**：手机打开微信小程序（导入 `SMART-M-BLE-Miniprogram/`）连接 DX-BT24：首页接收实时遥测 JSON 并下发 QUERY / RELAY / LED / PING / BEEP 命令；「设备配置」页在线读取/修改告警阈值（GETTH/SETTH）与 WiFi / 云连接参数（GETCFG/SETCFG）；「历史数据」页查看遥测记录；
 6. **SD 记录**：插入 TF 卡后上电，自动挂载 FatFs 并每 5s 写入 `/SMART/LOGxxxx.CSV`；
 7. **断网测试**：断开 WiFi，模块异步上报 `WIFI DISCONNECT`，终端立即走退避重连；数据缓存于 RAM，恢复后自动补发全部缓存数据；多次失败自动复位 WiFi 模块。
 
@@ -328,7 +379,7 @@ STM32_Programmer_CLI -c port=SWD -w build/Debug/SMART-M.hex
 | [`华为云IoTDA实验报告.md`](华为云IoTDA实验报告.md) | IoTDA 接入实验记录与结论 |
 | [`MQTT实验报告.md`](MQTT实验报告.md) | MQTT 协议实验记录 |
 | [`FreeModbus实验报告.md`](FreeModbus实验报告.md) | FreeModbus 主从一体（RTU）实验记录 |
-| [`文档/`](文档/) | 7 天冲刺执行方案、开发过程文档、**器件引脚与功能配置总表**、接线图、测试截图等 |
+| [`文档/`](文档/) | 7 天冲刺执行方案、开发过程文档、**器件引脚与功能配置总表**、**蓝牙BT24集成指南**、接线图、测试截图等 |
 
 ---
 
@@ -336,6 +387,8 @@ STM32_Programmer_CLI -c port=SWD -w build/Debug/SMART-M.hex
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| v5.0 | 2026-09 | 微信小程序 v1.11 完整版：新增历史数据页，蓝牙命令集扩充 GETTH/SETTH（阈值在线修改）+ GETCFG/SETCFG（网络配置在线修改）；网络配置运行时化（app_netcfg，存 Flash Sector7 掉电不丢，保存后 MQTT 自动重连）；内部 Flash 配置存储统一（BSP_FLASH_CONFIG，阈值 Sector6 + 网络配置 Sector7） |
+| v4.1 | 2026-09 | 小程序新增「设备配置」页：WiFi 热点与华为云连接参数（GETCFG/SETCFG）在线修改，配置存内部 Flash Sector7 掉电不丢失，保存后 MQTT 自动重连无需重启；新增 app_netcfg 运行时配置模块；修正阈值存储扇区（Sector11→Sector6，原扇区在 512KB 芯片上不存在） |
 | v4.0 | 2026-09 | 引脚与连接方式进阶：三传感器共享 I2C 总线（PB6/PB7）、INA226 换新模块（0x40/0.01Ω）、I2C 总线恢复；新增 DX-BT24 蓝牙透传（小程序监控）与 SD 卡存储（FatFs CSV）；WiFi 断线感知三态检测 |
 | v3.0 | 2026-09 | 平台层（03_plat）对象化框架落地；WiFi 断线感知精进：异步 WIFI DISCONNECT 事件检测、CIPSTATUS 防"假在线"、断线立即重连 |
 | v2.0 | 2026-09 | 五层架构重构（APP/SVC/PLAT/BSP/COMMON）；WiFi/MQTT 全链路精进：IPv4 直连、退避重连、连续失败复位、TCP 保活、离线缓存补发、线程安全发布接口、LED/继电器远程控制 |

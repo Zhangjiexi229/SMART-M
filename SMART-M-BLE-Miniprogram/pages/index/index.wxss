@@ -74,6 +74,21 @@
   padding: 30rpx 0;
 }
 
+/* 显示范围开关 */
+.filter-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.filter-label {
+  font-size: 22rpx;
+  color: #888;
+  margin-left: 12rpx;
+  flex: 1;
+  line-height: 1.5;
+}
+
 .grid {
   display: flex;
   flex-wrap: wrap;
@@ -93,6 +108,10 @@
   color: #1f6feb;
 }
 
+.cell-dim {
+  color: #999;
+}
+
 .cell-label {
   display: block;
   font-size: 22rpx;
@@ -100,10 +119,118 @@
   margin-top: 4rpx;
 }
 
+/* 告警 / 诊断卡片 */
+.card-warn {
+  border-left: 8rpx solid #cf222e;
+}
+
+.card-diag {
+  border-left: 8rpx solid #bc4c00;
+}
+
+.warn-title {
+  color: #cf222e;
+}
+
+.diag-title {
+  color: #bc4c00;
+}
+
+/* 告警/诊断明细：每项单独一行 */
+.warn-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10rpx;
+}
+
+.warn-label {
+  width: 110rpx;
+  font-size: 24rpx;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.warn-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.diag-msg {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  background: #f8f9fa;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #666;
+}
+
+/* 阈值设置 */
+.th-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.th-label {
+  width: 200rpx;
+  font-size: 26rpx;
+  color: #555;
+}
+
+.th-input {
+  flex: 1;
+  background: #f5f6fa;
+  border-radius: 8rpx;
+  padding: 10rpx 20rpx;
+  font-size: 28rpx;
+}
+
+.th-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #999;
+}
+
 .state-row {
   display: flex;
   flex-wrap: wrap;
   margin-top: 16rpx;
+}
+
+/* 继电器 / 警告 / 诊断：每项独立一行 */
+.state-line {
+  display: flex;
+  align-items: center;
+  margin-top: 12rpx;
+}
+
+.state-label {
+  width: 110rpx;
+  font-size: 24rpx;
+  color: #888;
+  flex-shrink: 0;
+}
+
+/* 按钮按下（深色）/ 恢复原样（原色）两种状态 */
+.btn-pressed {
+  transform: scale(0.96);
+}
+
+.btn-green.btn-pressed {
+  background: #1e7e34;
+}
+
+.btn-red.btn-pressed {
+  background: #a81d26;
+}
+
+.btn-gray.btn-pressed {
+  background: #9aa0a6;
+}
+
+.btn-primary.btn-pressed {
+  background: #1a5c8a;
 }
 
 .tag {
