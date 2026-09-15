@@ -704,9 +704,16 @@ static uint8_t mqtt_full_connect(void)
     }
     if (BSP_ESP8266_GetIP(ip_buf, sizeof(ip_buf)) == ESP8266_OK) {
         /* 热点断开后 CIFSR 可能仍返回旧 IP（假在线），用 CIPSTATUS 二次确认 WiFi 真正在线 */
-        if (BSP_ESP8266_IsWiFiConnected() != 0U) {
+        /* IsWiFiConnected 三态：1=在线，0=确认掉线(STATUS:5)，-1=查询失败(AT瞬时无响应)。
+           查询失败时信任 GetIP 跳过 rejoin，避免无谓的 2~10s 重连；真掉线由异步
+           WIFI DISCONNECT / 下一轮 full_connect 兜底（该回退与 v2.2a 的 GetIP 判断一致） */
+        int8_t wifi_link = BSP_ESP8266_IsWiFiConnected();
+        if (wifi_link == 1) {
             s_mqtt_status |= 0x01U;
             MQTT_Printf("[MQTT] WiFi already connected (IP=%s), skip join\r\n", ip_buf);
+        } else if (wifi_link == -1) {
+            s_mqtt_status |= 0x01U;
+            MQTT_Printf("[MQTT] WiFi IP=%s, CIPSTATUS query failed, trust GetIP & skip join\r\n", ip_buf);
         } else {
             MQTT_Printf("[MQTT] Stale IP=%s but WiFi link lost (STATUS:5), rejoin...\r\n", ip_buf);
             if (BSP_ESP8266_SetMode(ESP8266_MODE_STA) != ESP8266_OK) {

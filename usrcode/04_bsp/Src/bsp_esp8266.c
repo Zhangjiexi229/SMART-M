@@ -646,21 +646,22 @@ void BSP_ESP8266_ClearClosedFlag(void)
 
 /**
  * @brief  Query WiFi link state via AT+CIPSTATUS (no stale-IP shortcut)
- * @retval 1=WiFi connected (STATUS:2/3/4); 0=WiFi lost (STATUS:5) or query failed
+ * @retval 1=WiFi connected (STATUS:2/3/4); 0=WiFi lost (STATUS:5);
+ *         -1=query failed (AT no response / unexpected), caller should trust GetIP result
  */
-uint8_t BSP_ESP8266_IsWiFiConnected(void)
+int8_t BSP_ESP8266_IsWiFiConnected(void)
 {
     esp8266_send_cmd("AT+CIPSTATUS");
     if (esp8266_wait_response("OK", "ERROR", ESP8266_CMD_TIMEOUT_MS) != ESP8266_OK) {
-        return 0U;
+        return -1;   /* query failed: cannot confirm link state */
     }
     if (esp8266_mem_contains(s_resp_buf, s_resp_len, "STATUS:5") != 0U) {
-        return 0U;   /* WiFi disconnected from AP */
+        return 0;    /* WiFi disconnected from AP */
     }
     if (esp8266_mem_contains(s_resp_buf, s_resp_len, "STATUS:") != 0U) {
-        return 1U;   /* STATUS:2/3/4 -> WiFi link alive */
+        return 1;    /* STATUS:2/3/4 -> WiFi link alive */
     }
-    return 0U;
+    return -1;       /* unexpected response: treat as query failure */
 }
 
 /**

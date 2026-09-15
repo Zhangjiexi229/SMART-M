@@ -14,6 +14,7 @@
  *    Qmi8658Task   — QMI8658 六轴IMU任务：周期采集 + 姿态解算 + 串口打印 + 统一快照
  *    Ina226Task    — INA226 电源监测任务：周期采集 + 过流自动断电保护 + 串口打印 + 统一快照
  *    WifiTask      — WiFi 上报任务：ESP8266 连路由器 + TCP 上报温湿度
+ *    Bt24Task      — BT24 蓝牙透传任务：连接后周期上报快照JSON + 解析小程序命令（QUERY/RELAY/LED/PING/BEEP）
  *    （可选）LedBlinkTask / LED2_BlinkTask — LED 固定周期闪烁（默认关闭）
  *
  *  条件编译（module_cfg.h）：
@@ -95,6 +96,10 @@
 #if BSP_W25Q128_ENABLE
 #include "bsp_w25q128.h"
 #endif
+#if APP_SD_ENABLE && BSP_SD_ENABLE
+#include "app_sd.h"
+
+#endif
 #if BSP_KEY_MATRIX_ENABLE
 #include "bsp_key_matrix.h"
 #endif
@@ -141,6 +146,9 @@
 #endif
 #if APP_CONN_ENGINE_ENABLE && PLAT_CONN_ENABLE
 #include "app_conn_engine.h"
+#endif
+#if APP_BT24_ENABLE && BSP_BT24_ENABLE
+#include "app_bt24.h"
 #endif
 #if PLAT_BRDMGR_ENABLE && PLAT_DEVMGR_ENABLE && PLAT_OBJ_ENABLE
 #include "plat_brd.h"
@@ -294,6 +302,19 @@ static const osThreadAttr_t s_qmi8658Task_attr = {
 #if APP_INA226_ENABLE && BSP_INA226_ENABLE
 static osThreadId_t s_ina226TaskHandle;
 
+/* ==========================================================================
+ *  SD 数据存储任务
+ * ========================================================================== */
+#if APP_SD_ENABLE && BSP_SD_ENABLE
+static osThreadId_t s_sdTaskHandle;
+
+static const osThreadAttr_t s_sdTask_attr = {
+    .name       = "SdLogTask",
+    .stack_size = 1024 * 12,   /* FatFs + 打印三连 vsnprintf，8KB 仍溢出（pre-delay 打印踩栈），加至 12KB */
+    .priority   = (osPriority_t)osPriorityAboveNormal,   /* 原 Normal 与 WiFi/MQTT/传感器同优先级时间片轮转 → SD 轮询读被抢占超 1.28ms 致 RX FIFO 溢出(err=0x20)；提至 AboveNormal 保证排空窗口 */
+};
+#endif /* APP_SD_ENABLE && BSP_SD_ENABLE */
+
 static const osThreadAttr_t s_ina226Task_attr = {
     .name       = "Ina226Task",
     .stack_size = 256 * 4,
@@ -364,6 +385,19 @@ static const osThreadAttr_t s_mqttTask_attr = {
     .priority   = (osPriority_t)MQTT_TASK_PRIORITY,
 };
 #endif /* APP_MQTT_ENABLE && BSP_ESP8266_ENABLE */
+
+/* ==========================================================================
+ *  BT24 蓝牙透传任务（连接后周期上报 + 小程序下行命令）
+ * ========================================================================== */
+#if APP_BT24_ENABLE && BSP_BT24_ENABLE
+static osThreadId_t s_bt24TaskHandle;
+
+static const osThreadAttr_t s_bt24Task_attr = {
+    .name       = "Bt24Task",
+    .stack_size = 512 * 4,   /* snprintf 浮点遥测帧 + JSON解析，栈需放大 */
+    .priority   = (osPriority_t)osPriorityNormal,
+};
+#endif /* APP_BT24_ENABLE && BSP_BT24_ENABLE */
 
 /* ==========================================================================
  *  看门狗监控任务（多任务心跳，所有关键任务心跳正常才喂狗）
@@ -500,6 +534,10 @@ void APP_Init(void)
     BSP_ESP8266_Init(); /* ESP8266 驱动初始化（清空UART3接收，等待模块上电稳定） */
 #endif
 
+#if APP_BT24_ENABLE && BSP_BT24_ENABLE
+    APP_BT24_Init();    /* DX-BT24 蓝牙透传（USART2 DMA接收+IDLE判帧）；AT+NOTI1在任务内延时配置 */
+#endif
+
 #if APP_MODBUS_ENABLE
     APP_Modbus_RS485_GPIO_Init();  /* RS485 DE/RE 引脚初始化 (PB0=主站, PB1=从站) */
 #endif
@@ -513,7 +551,7 @@ void APP_Init(void)
 #endif
 
 #if BSP_I2C_SOFT_ENABLE
-    BSP_I2C_Soft_Init();    /* 共享软件I2C总线（PB8=SCL/PB9=SDA），SHT30/QMI8658/INA226前置 */
+    BSP_I2C_Soft_Init();    /* 共享软件I2C总线（PB6=SCL/PB7=SDA），SHT30/QMI8658/INA226前置 */
 #endif
 
 #if APP_OFFLINE_ENABLE
@@ -564,7 +602,7 @@ void APP_Init(void)
     {
         uint16_t scn_addr;
         uint16_t scn_found = 0U;
-        BSP_UART1_Printf("[I2C-Scan] Bus1 (PB8=SCL/PB9=SDA) probing 0x30..0x77...\r\n");
+        BSP_UART1_Printf("[I2C-Scan] Bus1 (PB6=SCL/PB7=SDA) probing 0x30..0x77...\r\n");
         for (scn_addr = 0x30U; scn_addr <= 0x77U; scn_addr++) {
             if (BSP_I2C_Soft_Probe((uint8_t)scn_addr) == 0U) {
                 BSP_UART1_Printf("[I2C-Scan]   found 0x%02X\r\n", (unsigned)scn_addr);
@@ -741,6 +779,17 @@ void APP_TASKS_CreateTasks(void)
 #endif
 #endif /* APP_INA226_ENABLE && BSP_INA226_ENABLE */
 
+#if APP_SD_ENABLE && BSP_SD_ENABLE
+    s_sdTaskHandle = osThreadNew(APP_SD_Task, NULL, &s_sdTask_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_sdTaskHandle != NULL) { Watchdog_Register(WDT_TASK_SD); }
+#endif
+    if (s_sdTaskHandle == NULL) {
+        /* 任务未创建（多为 FreeRTOS 堆不足），串口可看到诊断 */
+        BSP_UART1_Printf("[SD] task create FAIL (free heap low?)\r\n");
+    }
+#endif /* APP_SD_ENABLE && BSP_SD_ENABLE */
+
 #if APP_HC_SR04_ENABLE && BSP_HC_SR04_ENABLE
     s_ultrasonicTaskHandle = osThreadNew(APP_HC_SR04_Task, NULL, &s_ultrasonicTask_attr);
 #endif /* APP_HC_SR04_ENABLE && BSP_HC_SR04_ENABLE */
@@ -755,6 +804,13 @@ void APP_TASKS_CreateTasks(void)
     if (s_mqttTaskHandle != NULL) { Watchdog_Register(WDT_TASK_MQTT); }
 #endif
 #endif /* APP_MQTT_ENABLE && BSP_ESP8266_ENABLE */
+
+#if APP_BT24_ENABLE && BSP_BT24_ENABLE
+    s_bt24TaskHandle = osThreadNew(APP_BT24_Task, NULL, &s_bt24Task_attr);
+#if APP_WATCHDOG_ENABLE
+    if (s_bt24TaskHandle != NULL) { Watchdog_Register(WDT_TASK_BT24); }
+#endif
+#endif /* APP_BT24_ENABLE && BSP_BT24_ENABLE */
 
 #if APP_OLED_ENABLE && APP_TASKS_ENABLE && BSP_OLED_ENABLE
     s_oledTaskHandle = osThreadNew(APP_OLED_DisplayTask, NULL, &s_oledTask_attr);
@@ -825,7 +881,12 @@ static void LED2_BlinkTask_Entry(void *argument)
 void vApplicationStackOverflowHook(TaskHandle_t xTask, signed char *pcTaskName)
 {
     (void)xTask;
-    BSP_UART1_Printf("[RTOS] *** STACK OVERFLOW in %s ***\r\n", (const char *)pcTaskName);
+    /* 直发串口（绕过 BSP_UART1_Printf 过滤器），栈溢出信息不被 SD_ONLY 过滤掉 */
+    BSP_UART1_SendString("[RTOS] *** STACK OVERFLOW in ");
+    if (pcTaskName != NULL) {
+        BSP_UART1_SendString((const char *)pcTaskName);
+    }
+    BSP_UART1_SendString(" ***\r\n");
     /* 卡死并闪烁LED1，便于定位（重新上电可恢复） */
     for (;;) {
 #if BSP_LED_ENABLE

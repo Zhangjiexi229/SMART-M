@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32F407 SD 卡挂载失败 — 诊断与修复</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#f4f6f8; color:#1f2937; line-height:1.55; padding:28px 16px; }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:24px; font-weight:700; margin-bottom:6px; }
+  .sub { font-size:14px; color:#64748b; margin-bottom:24px; }
+  .verdict { background:#fff7ed; border:1px solid #fdba74; border-left:5px solid #f97316; border-radius:8px; padding:14px 16px; margin-bottom:26px; font-size:15px; }
+  .verdict b { color:#c2410c; }
+  .zone { background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .zone-tag { display:inline-block; font-size:13px; font-weight:700; color:#fff; border-radius:4px; padding:2px 10px; margin-bottom:12px; }
+  .z1 .zone-tag { background:#dc2626; } .z2 .zone-tag { background:#d97706; } .z3 .zone-tag { background:#16a34a; }
+  .zone h2 { font-size:17px; margin-bottom:4px; }
+  .zone .zhint { font-size:13px; color:#64748b; margin-bottom:14px; }
+  /* log cards */
+  .log { display:flex; flex-wrap:wrap; gap:10px; }
+  .logcard { flex:1 1 210px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; }
+  .logcard code { display:block; font-family:Consolas,monospace; font-size:12.5px; color:#0f172a; background:#eef2f7; border-radius:4px; padding:5px 8px; margin-bottom:6px; word-break:break-all; }
+  .logcard .desc { font-size:13px; color:#334155; }
+  .logcard .bad { color:#b91c1c; font-weight:700; }
+  /* chain */
+  .chain { display:flex; flex-direction:column; gap:0; margin:6px 0 4px; }
+  .node { border:1.5px solid #d97706; background:#fffbeb; border-radius:8px; padding:10px 14px; font-size:14px; }
+  .node b { color:#92400e; }
+  .arrow { text-align:center; color:#d97706; font-size:16px; padding:2px 0; }
+  .math { background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:12px 14px; margin:12px 0; font-size:14px; }
+  .math code { background:#fff; border:1px solid #e2e8f0; border-radius:4px; padding:1px 6px; font-family:Consolas,monospace; font-size:13px; }
+  .math .wrong { color:#b91c1c; font-weight:700; }
+  .math .right { color:#15803d; font-weight:700; }
+  /* scale bar */
+  .scale { margin:16px 0 4px; }
+  .scale .stitle { font-size:13px; color:#475569; margin-bottom:6px; }
+  .sbar { position:relative; height:26px; background:linear-gradient(90deg,#fca5a5 0%,#fcd34d 55%,#86efac 100%); border-radius:6px; }
+  .sbar .ticks { position:absolute; top:-22px; font-size:11px; color:#334155; }
+  .sbar .t1 { left:2%; } .sbar .t2 { left:55%; transform:translateX(-50%); } .sbar .t3 { right:2%; }
+  .sbar .mark { position:absolute; top:-8px; bottom:-8px; width:3px; background:#b91c1c; }
+  .sbar .mark span { position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:11px; font-weight:700; color:#b91c1c; white-space:nowrap; }
+  .sbar .m-fix { background:#15803d; }
+  .sbar .m-fix span { color:#15803d; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; color:#475569; margin-top:6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+  .lg1 i { background:#fca5a5; } .lg2 i { background:#fcd34d; } .lg3 i { background:#86efac; }
+  /* fix cards */
+  .fixlist { display:flex; flex-direction:column; gap:10px; }
+  .fix { border:1px solid #d1fae5; background:#f0fdf4; border-radius:8px; padding:11px 14px; font-size:14px; }
+  .fix b { color:#166534; }
+  .fix code { background:#dcfce7; border-radius:4px; padding:1px 6px; font-family:Consolas,monospace; font-size:13px; }
+  .fix .before { color:#b91c1c; text-decoration:line-through; }
+  .fix .after { color:#15803d; font-weight:700; }
+  .fix .step { font-size:13px; color:#475569; margin-top:4px; }
+  .warn { border:1px solid #fecaca; background:#fef2f2; }
+  .warn b { color:#991b1b; }
+  .warn code { background:#fee2e2; }
+  .foot { font-size:12px; color:#94a3b8; text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>STM32F407 SD 卡挂载失败 — 诊断</h1>
+  <div class="sub">SMART-M 项目 · 串口日志（XCOM V2.6）· 2026-09-14</div>
+
+  <div class="verdict"><b>结论：不是卡坏、也不是 FAT32 格式问题。</b>挂载失败（fr=1 = FR_DISK_ERR）的根因是工程对 HAL 驱动做了改动：<b>SDIO 数据阶段硬件超时被设为 <code>DataTimeOut = 0x40</code></b>（注释声称 0.5s，实际在 400kHz 时钟下只有 <b>160µs</b>），远小于 SD 卡读扇区的访问时间（通常几 ms），导致每次读扇区 0 都触发 <b>err=8（DATA_TIMEOUT）</b>，挂载永远失败。</div>
+
+  <!-- Zone 1 现象 -->
+  <div class="zone z1">
+    <span class="zone-tag">① 现象（日志证据）</span>
+    <h2>串口日志里发生了什么</h2>
+    <div class="zhint">日志逐行对应代码：app_sd.c / bsp_sd.c / stm32f4xx_hal_sd.c</div>
+    <div class="log">
+      <div class="logcard"><code>[SD] card ok: 1146 MB</code><div class="desc">卡片识别成功，但容量是 <span class="bad">误报</span>：真实容量 61,067,264 扇区 × 512B ≈ <b>29.1 GiB（32GB 卡）</b>，bsp_sd.c 用 uint32 算容量发生溢出才打印出 1146 MB。</div></div>
+      <div class="logcard"><code>[SD] rd blk=0 err=8 sta=0</code><div class="desc">读 0 号扇区失败，<b>err=8 = HAL_SD_ERROR_DATA_TIMEOUT</b>：卡接收了 CMD17 命令，但数据阶段超时、<b>一字节数据都没收到</b>。</div></div>
+      <div class="logcard"><code>[SD] mount fr=1 t=12 ms</code><div class="desc">f_mount 返回 <b>fr=1 = FR_DISK_ERR</b>（底层磁盘读写错误），不是 FR_NO_FILESYSTEM(13)，所以<b>与 FAT32 格式无关</b>。</div></div>
+      <div class="logcard"><code>[SD] not ready, retrying...</code><div class="desc">每 30s 重复一次挂载尝试，全部同样失败；提示语 “check card & FAT32” 对 fr=1 属于<b>误导</b>。</div></div>
+    </div>
+  </div>
+
+  <!-- Zone 2 根因 -->
+  <div class="zone z2">
+    <span class="zone-tag">② 根因（机制链）</span>
+    <h2>为什么识别成功、读扇区却必超时</h2>
+    <div class="chain">
+      <div class="node"><b>SDIO 初始化成功</b>（CMD0→CMD8→ACMD41→CMD2→CMD3→CMD7）：命令阶段全部通过。</div>
+      <div class="arrow">↓</div>
+      <div class="node">容量/CSD 能读出：CMD9/CMD10 的 CID/CSD 是<b>命令响应（R2 寄存器）</b>返回，<b>不走数据总线</b> —— 所以看起来“卡没问题”。</div>
+      <div class="arrow">↓</div>
+      <div class="node">FatFs 挂载时<b>真正读扇区（CMD17）</b>，数据必须走 D0 数据线，受 DTIMER（数据超时计数器）约束。</div>
+      <div class="arrow">↓</div>
+      <div class="node">工程修改：<b>HAL_SD_ReadBlocks/WriteBlocks 共 8 处</b>把 <code>config.DataTimeOut</code> 设为 <code>0x40U</code>，注释写 “0.5s@400kHz”。</div>
+      <div class="arrow">↓</div>
+      <div class="node" style="border-color:#b91c1c;background:#fef2f2;"><b style="color:#b91c1c">0x40 = 64 个 SDIO_CK 周期 @ 400kHz = 160µs</b>（真正 0.5s 需要 200,000 周期 = 0x30D40），比声称值小约 3125 倍。</div>
+      <div class="arrow">↓</div>
+      <div class="node" style="border-color:#b91c1c;background:#fef2f2;"><b style="color:#b91c1c">SD 卡读单块访问时间 tAC 通常为几 ms &gt; 160µs</b> → 数据还没开始发，DTIMER 已到期 → DTIMEOUT(8) → fr=1 → 挂载失败。</div>
+    </div>
+
+    <div class="math">超时值换算：<code>DataTimeOut</code> 是 24 位计数器，按 SDIO_CK 时钟计数。<br>
+      <span class="wrong">现在：0x40 = 64 周期 → 64 ÷ 400,000Hz = 160µs</span>（任何读都会超时）<br>
+      <span class="right">应为：0.5s → 200,000 周期 = 0x30D40</span>（注释本来的意图）<br>
+      稳妥方案：<span class="right">0xFFFFFF（24 位最大值）</span> → 400kHz 下 ≈ 41.9s，24MHz 下 ≈ 699ms，兼容后续提速。
+    </div>
+
+    <div class="scale">
+      <div class="stitle">数据阶段允许等待时间对比（对数刻度示意）</div>
+      <div class="sbar">
+        <span class="ticks t1">160µs<br>当前 0x40</span>
+        <span class="ticks t2">几 ms<br>卡读扇区 tAC</span>
+        <span class="ticks t3">0.5s<br>原注释意图</span>
+        <span class="mark" style="left:1%;"><span>实际超时点 → 卡来不及响应</span></span>
+        <span class="mark m-fix" style="left:60%;"><span>建议起点 0xFFFFFF</span></span>
+      </div>
+      <div class="legend"><span class="lg1"><i></i>超时区（必失败）</span><span class="lg2"><i></i>风险区</span><span class="lg3"><i></i>安全区</span></div>
+    </div>
+  </div>
+
+  <!-- Zone 3 修复 -->
+  <div class="zone z3">
+    <span class="zone-tag">③ 修复方案</span>
+    <h2>三步解决</h2>
+    <div class="fixlist">
+      <div class="fix"><b>1. 改超时（根因，8 处）</b>：stm32f4xx_hal_sd.c 中 8 处<br>
+        <code class="before">config.DataTimeOut = 0x40U;</code> → <code class="after">config.DataTimeOut = 0xFFFFFFU;</code><br>
+        <span class="step">（若想保留“有界超时”防看门狗饿死，可按当时 SDIO_CK 频率换算：400kHz→0x30D40；提速到 24MHz 后必须重算，0x40 会只剩 2.7µs，更糟。）</span></div>
+      <div class="fix"><b>2. 修容量打印（次要）</b>：bsp_sd.c 的 <code>capacity_bytes = BlockNbr * BlockSize</code> 用 uint32 会溢出，32GB 卡被误报成 1146 MB。<br>
+        <span class="step">改为先除后乘或 64 位计算，例如 <code>(uint32_t)((uint64_t)BlockNbr * BlockSize / 1048576)</code> 后打印 MB。</span></div>
+      <div class="fix warn"><b>3. 若改完仍失败，再查硬件</b>：板上 SDIO 无外部上拉（靠内部弱上拉），按可靠性顺序检查 —— <code>D0/CMD 加 10kΩ 上拉到 3.3V</code> → <code>卡 VDD 就近加 10µF+100nF 去耦、供电线加粗</code> → <code>线序/接触（PC8=D0, PD2=CMD, PC12=CK）</code> → <code>换一张已知良好的卡交叉验证</code>。<br>
+        <span class="step">另注意：FreeRTOS 空闲堆在 SD 任务启动时仅 8168B，偏紧但不影响本次挂载；后续若要长期写日志建议评估堆水位。</span></div>
+    </div>
+  </div>
+
+  <div class="foot">依据：串口日志 + app_sd.c / bsp_sd.c / diskio.c / stm32f4xx_hal_sd.c（SMART-M 工程源码）</div>
+</div>
+</body>
+</html>

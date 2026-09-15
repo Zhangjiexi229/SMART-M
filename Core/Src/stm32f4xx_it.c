@@ -25,6 +25,9 @@
 #if BSP_UART1_ENABLE || BSP_UART3_ENABLE
 #include "bsp_uart.h"
 #endif /* BSP_UART1_ENABLE || BSP_UART3_ENABLE */
+#if BSP_BT24_ENABLE
+#include "bsp_bt24.h"
+#endif /* BSP_BT24_ENABLE */
 
 /* USER CODE END Includes */
 
@@ -98,6 +101,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  BSP_UART1_SendString("[RTOS] *** HARD FAULT ***\r\n");
 
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
@@ -259,7 +263,14 @@ void USART2_IRQHandler(void)
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
-
+#if BSP_BT24_ENABLE
+/* IDLE判帧：BT24蓝牙模块（DX-BT24）透传数据判帧，DMA环形缓冲->软件环形缓冲 */
+  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) != RESET)
+  {
+    __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+    BSP_BT24_RxIdleHandler();
+  }
+#endif /* BSP_BT24_ENABLE */
   /* USER CODE END USART2_IRQn 1 */
 }
 

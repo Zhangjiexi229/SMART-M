@@ -60,7 +60,7 @@
 #define MQTT_CLIENT_ID        "your_client_id"  /*!< 连接密钥文件中的clientId */
 #define MQTT_USERNAME         "your_username"    /*!< 连接密钥文件中的username（即device_id） */
 #define MQTT_PASSWORD         "your_password"  /*!< 连接密钥文件中的password */
-#define MQTT_KEEPALIVE_SEC    60U                /*!< 心跳间隔（秒） */
+#define MQTT_KEEPALIVE_SEC    30U                /*!< 心跳间隔（秒），对齐 v2.2a：缩短以加快半开 TCP 检测（已移除 10s TCP 探测，keepalive 为唯一兜底） */
 
 /* --- 华为云设备ID（用于主题拼接，与MQTT_USERNAME相同） --- */
 #define HUAWEI_DEVICE_ID      "your_username"    /*!< 设备ID */
@@ -74,7 +74,7 @@
 
 /* --- 运行参数 --- */
 #define MQTT_PUBLISH_PERIOD_MS  3000U   /*!< 数据上报周期（毫秒） */
-#define MQTT_RECONNECT_DELAY_MS 3000U   /*!< 兼容保留：实际重连等待采用指数退避（1000ms 起，上限30s），见 app_mqtt.c */
+#define MQTT_RECONNECT_DELAY_MS 3000U   /*!< 兼容保留（未使用）：实际重连等待采用指数退避，1s 起、8s 封顶（mqtt_backoff_delay），见 app_mqtt.c */
 #define MQTT_YIELD_TIMEOUT_MS   200     /*!< 每次MQTTYield的超时（毫秒），越小下行响应越快 */
 
 /* ==========================================================================

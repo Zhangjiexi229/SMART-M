@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD 日志 CSV 格式核验</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#f4f6f8; color:#1f2937; line-height:1.55; padding:28px 16px; }
+  .wrap { max-width:960px; margin:0 auto; }
+  h1 { font-size:23px; font-weight:700; margin-bottom:6px; }
+  .sub { font-size:14px; color:#64748b; margin-bottom:22px; }
+  .verdict { background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #16a34a; border-radius:8px; padding:14px 16px; margin-bottom:24px; font-size:15px; }
+  .verdict b { color:#15803d; }
+  .zone { background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .zone h2 { font-size:17px; margin-bottom:12px; }
+  .csvhead { font-family:Consolas,monospace; font-size:13px; background:#0f172a; color:#7dd3fc; border-radius:6px; padding:10px 12px; margin-bottom:8px; word-break:break-all; }
+  .csvrow { font-family:Consolas,monospace; font-size:13px; background:#f1f5f9; color:#334155; border-radius:6px; padding:10px 12px; margin-bottom:14px; word-break:break-all; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { border:1px solid #e2e8f0; padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; }
+  code { font-family:Consolas,monospace; font-size:12px; background:#eef2f7; border-radius:3px; padding:0 4px; }
+  .warn { border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:11px 14px; font-size:13.5px; margin-top:14px; }
+  .warn b { color:#92400e; }
+  .ok { color:#15803d; font-weight:700; }
+  .foot { font-size:12px; color:#94a3b8; text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SD 日志 CSV 格式核验</h1>
+  <div class="sub">SMART-M 项目 · 代码静态核验（app_sd.c + app_diag.h）· 2026-09-14</div>
+
+  <div class="verdict"><b>格式符合预期：表头 8 列与数据行 8 个字段一一对应，列序、单位、小数精度均匹配。</b>实际文件内容待 SD 卡插入电脑后直接读取验证。</div>
+
+  <div class="zone">
+    <h2>文件内容规范</h2>
+    <div class="csvhead">uptime_s,temp_c,hum_rh,vib_g,current_a,voltage_v,power_w,alarm</div>
+    <div class="csvrow">0,24.5,55.2,1.012,0.320,12.10,3.872,0</div>
+    <table>
+      <tr><th>#</th><th>列名</th><th>含义</th><th>来源</th><th>单位</th><th>精度</th><th>预期范围</th></tr>
+      <tr><td>1</td><td>uptime_s</td><td>运行秒数（自开机）</td><td>HAL_GetTick()/1000</td><td>s</td><td>整数</td><td>0 起递增</td></tr>
+      <tr><td>2</td><td>temp_c</td><td>温度</td><td>SHT30</td><td>℃</td><td>%.1f</td><td>约 10~40（可负）</td></tr>
+      <tr><td>3</td><td>hum_rh</td><td>相对湿度</td><td>SHT30</td><td>%RH</td><td>%.1f</td><td>0~100</td></tr>
+      <tr><td>4</td><td>vib_g</td><td>振动模值 √(ax²+ay²+az²)</td><td>QMI8658</td><td>g</td><td>%.3f</td><td>静态 ≈1.0，振动时 &gt;1</td></tr>
+      <tr><td>5</td><td>current_a</td><td>负载电流</td><td>INA226</td><td>A</td><td>%.3f</td><td>视负载 0~数 A</td></tr>
+      <tr><td>6</td><td>voltage_v</td><td>母线电压</td><td>INA226</td><td>V</td><td>%.2f</td><td>约 5 或 12</td></tr>
+      <tr><td>7</td><td>power_w</td><td>功率（U×I）</td><td>INA226</td><td>W</td><td>%.3f</td><td>≈ 电压×电流</td></tr>
+      <tr><td>8</td><td>alarm</td><td>报警标志</td><td>g_alarm_active</td><td>—</td><td>%u</td><td>0 或 1</td></tr>
+    </table>
+  </div>
+
+  <div class="zone">
+    <h2>写入与滚动逻辑</h2>
+    <table>
+      <tr><th>项目</th><th>行为</th><th>核验</th></tr>
+      <tr><td>写入节奏</td><td>每 5s 追加一行，<code>f_sync</code> 每条落盘</td><td class="ok">✓ 符合</td></tr>
+      <tr><td>文件滚动</td><td>单文件 &gt;256KB 自动切下一编号</td><td class="ok">✓ 符合</td></tr>
+      <tr><td>新会话</td><td>每次成功挂载后开 <code>max+1</code> 新编号（FA_OPEN_ALWAYS）</td><td class="ok">✓ 符合（LOG0002 存在 ⇒ 0001 已建）</td></tr>
+      <tr><td>表头</td><td>仅空文件（新文件）写入表头</td><td class="ok">✓ 符合</td></tr>
+    </table>
+    <div class="warn"><b>两个使用注意点：</b><br>
+    ① 每次重新挂载都会新开一个编号文件（不做续写），设备频繁重启会产生多个小文件——属设计行为，不是异常；<br>
+    ② 某传感器失效时，对应列保留<b>上一次的旧值</b>（valid 标志只维护在内存、不写入 CSV），需要结合其他列或报警判断数据是否新鲜。</div>
+  </div>
+
+  <div class="foot">依据：app_sd.c（SD_OpenNextLogFile / APP_SD_Task 写入格式）+ app_diag.h（快照字段定义）</div>
+</div>
+</body>
+</html>

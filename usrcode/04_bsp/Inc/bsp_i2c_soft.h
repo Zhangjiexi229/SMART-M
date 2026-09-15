@@ -1,19 +1,18 @@
 /**
  ******************************************************************************
  * @file    bsp_i2c_soft.h
- * @brief   共享软件I2C总线驱动头文件 — PB8=SCL, PB9=SDA（与板载IIC排针一致）
+ * @brief   共享软件I2C总线驱动头文件 — PB6=SCL, PB7=SDA
  *
  *  挂载器件（7位I2C地址，互不冲突）：
  *    AT24C02  = 0x50  板载EEPROM（bsp_at24c02 自带软件I2C，不依赖本驱动）
  *    SHT30    = 0x44  温湿度传感器（ADDR引脚接地）
  *    QMI8658  = 0x6B  六轴IMU（本模块AD0板上固定接地→0x6B）
- *    INA226   = 0x40  电源监测（A0/A1接地）
+ *    INA226   = 0x40  电源监测（A0/A1接GND，蓝色R010模块；见 bsp_ina226.h）
  *    MPU6050  = 0x68  板载IMU（本工程未使用）
  *
  *  设计原则：
  *    - 每个 I2C 事务（Start...Stop）用关中断临界区保护，防止 FreeRTOS 任务
  *      抢占导致总线时序被破坏；SHT30 的测量等待（~20ms）在临界区外进行
- *    - 与 bsp_at24c02 共用 PB8/PB9，双方初始化互相覆盖为相同配置，无冲突
  *    - 本驱动是只做"寄存器读写"的通用主机，具体器件语义在各 bsp_xxx 中实现
  ******************************************************************************
  */
@@ -24,12 +23,12 @@
 
 /* ========== 总线引脚映射 ========== */
 #define I2C_SOFT_SCL_GPIO_Port   GPIOB
-#define I2C_SOFT_SCL_Pin         GPIO_PIN_8
+#define I2C_SOFT_SCL_Pin         GPIO_PIN_6
 #define I2C_SOFT_SDA_GPIO_Port   GPIOB
-#define I2C_SOFT_SDA_Pin         GPIO_PIN_9
+#define I2C_SOFT_SDA_Pin         GPIO_PIN_7
 
 /**
- * @brief  软件I2C总线初始化（PB8=SCL推挽输出, PB9=SDA动态切换输入/输出）
+ * @brief  软件I2C总线初始化（PB6=SCL推挽输出, PB7=SDA动态切换输入/输出）
  * @note   在任务调度器启动前调用（APP_Init）；各器件 BSP_xxx_Init 前必须先调用本函数
  */
 void BSP_I2C_Soft_Init(void);

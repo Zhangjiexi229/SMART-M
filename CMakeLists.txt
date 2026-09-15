@@ -49,6 +49,7 @@ file(GLOB PLAT_SOURCES     CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcod
 file(GLOB SVC_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/02_svc/Src/*.c")
 file(GLOB BSP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/04_bsp/Src/*.c")
 file(GLOB APP_SOURCES      CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/Src/*.c")
+file(GLOB FATFS_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src/option/unicode.c")
 
 # Paho MQTT Embedded C —�?仅编译客户端需要的文件（排�?Server.c服务端和MQTTFormat工具�?
 set(PAHO_MQTT_PACKET_SOURCES
@@ -89,6 +90,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${SVC_SOURCES}
     ${BSP_SOURCES}
     ${APP_SOURCES}
+    ${FATFS_SOURCES}
     ${PAHO_MQTT_PACKET_SOURCES}
     ${PAHO_MQTT_CLIENT_SOURCES}
     ${FREEMODBUS_SOURCES}
@@ -105,6 +107,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/02_svc/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/04_bsp/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/usrcode/01_app/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTPacket/src
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/paho/MQTTClient-C/src
     ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/Third_Party/freemodbus/modbus/include

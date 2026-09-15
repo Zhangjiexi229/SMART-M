@@ -16,6 +16,7 @@
 #define BSP_LED_ENABLE          1   /* LED灯驱动（总开关；关闭后所有模块均无法控制LED） */
 #define BSP_UART1_ENABLE        1   /* UART1驱动（DMA环形接收 + IDLE判帧，调试打印用；WiFi任务依赖） */
 #define BSP_UART3_ENABLE        1   /* UART3驱动（DMA环形接收 + IDLE判帧，ESP8266通信口） */
+#define BSP_BT24_ENABLE         1   /* DX-BT24 BLE串口透传模块驱动（USART2/PA2-PA3，DMA环形接收+IDLE判帧；模块默认9600bps，USART2已同步改为9600） */
 #define BSP_ESP8266_ENABLE      1   /* ESP8266 WiFi模块AT指令驱动（依赖BSP_UART3） */
 #define BSP_IWDG_ENABLE         1   /* 独立看门狗IWDG（寄存器直操作，LSI≈32kHz，超时3秒，防系统跑飞；依赖Core/Src/iwdg.c，由app_watchdog统一喂狗） */
 #define BSP_KEY_ENABLE          0   /* 按键驱动（GPIO读取+消抖状态机）——F407VET6无PG端口，独立键停用；板载按键 WK_UP=PA0/KEY0=PE4/KEY1=PE3 */
@@ -24,15 +25,16 @@
 #define BSP_LIGHT_SENSOR_ENABLE 0   /* 光敏传感器驱动（ADC3_IN5/PF7，查询式单次转换） */
 #define BSP_DHT11_ENABLE        0   /* DHT11温湿度驱动——F407VET6无PG9引脚，且SHT30已提供温湿度，停用 */
 #define BSP_FLASH_CONFIG_ENABLE 1   /* 内部Flash配置存储（Sector11@0x080E0000，存告警阈值，上电加载） */
-#define BSP_I2C_SOFT_ENABLE     1   /* 共享软件I2C总线驱动（PB8=SCL/PB9=SDA，与AT24C02同总线，为SHT30/QMI8658/INA226提供主机时序） */
+#define BSP_I2C_SOFT_ENABLE     1   /* 共享软件I2C总线驱动（PB6=SCL/PB7=SDA，为SHT30/QMI8658/INA226提供主机时序） */
 #define BSP_SHT30_ENABLE        1   /* SHT30温湿度传感器驱动（软件I2C，7位地址0x44，ADDR接GND；依赖BSP_I2C_SOFT_ENABLE+BSP_DELAY_ENABLE） */
 #define BSP_QMI8658_ENABLE      1   /* QMI8658六轴IMU驱动（软件I2C，7位地址0x6B，本模块AD0板上固定接地；依赖BSP_I2C_SOFT_ENABLE） */
-#define BSP_INA226_ENABLE       1   /* INA226电源监测驱动（软件I2C，7位地址0x40，A0/A1接GND；采样电阻0.1Ω；依赖BSP_I2C_SOFT_ENABLE） */
+#define BSP_INA226_ENABLE       1   /* INA226电源监测驱动（软件I2C，7位地址0x40，A0/A1接GND；采样电阻0.01Ω R010；依赖BSP_I2C_SOFT_ENABLE） */
 #define BSP_RELAY_ENABLE        1   /* 继电器驱动（PA4推挽输出，高电平吸合；COM/NO串接电机电源回路） */
 #define BSP_OLED_ENABLE         1   /* OLED驱动（SSD1306，PD6=SCL/PD7=SDA 软件I2C） */
 #define BSP_AT24C02_ENABLE      0   /* I2C EEPROM驱动——新核心板无AT24C02芯片，停用 */
 #define BSP_W25Q128_ENABLE      0   /* SPI Flash W25Q128——新板W25Q128为板载(SPI1)，工程不使用，停用 */
-#define BSP_HC_SR04_ENABLE      0   /* HC-SR04超声波测距驱动（PC11=Trig, PE5=Echo，轮询测量） */
+#define BSP_HC_SR04_ENABLE      0
+#define BSP_SD_ENABLE           1   /* SD/TF card driver: SDIO 4bit PC8-PC12+PD2, FatFs diskio */   /* HC-SR04超声波测距驱动（PC11=Trig, PE5=Echo，轮询测量） */
 /* ========== PLAT 平台抽象层模块开关（对齐 v2.2a 五层架构，03_plat） ========== */
 #define PLAT_OBJ_ENABLE          1   /* 对象模型（plat_obj.h）：plat_dev_t/plat_svc_t + 统一生命周期状态 */
 #define PLAT_DEVMGR_ENABLE       1   /* 设备管理器（plat_devmgr）：注册/查找/批量生命周期驱动（依赖PLAT_OBJ_ENABLE） */
@@ -52,6 +54,10 @@
  * 两者同时启用会争抢同一个软件环形缓冲，导致AT响应丢包、WiFi连接失败 */
 #if BSP_ESP8266_ENABLE && APP_UART3_CMD_ENABLE
 #error "冲突：BSP_ESP8266_ENABLE 与 APP_UART3_CMD_ENABLE 不能同时为1，UART3只能用于ESP8266通信或串口指令控LED二者之一"
+#endif
+/* 蓝牙透传任务依赖 BT24 BSP 驱动 */
+#if APP_BT24_ENABLE && !BSP_BT24_ENABLE
+#error "依赖缺失：APP_BT24_ENABLE 依赖 BSP_BT24_ENABLE=1"
 #endif
 /* MQTT任务与WiFi TCP上报任务共用ESP8266，不能同时运行 */
 #if APP_MQTT_ENABLE && APP_WIFI_ENABLE
@@ -74,6 +80,9 @@
 #error "依赖缺失：APP_FAULT_ENABLE 依赖 APP_VIBRATION_ENABLE=1"
 #endif
 /* 断网补传依赖诊断中枢 */
+#if APP_SD_ENABLE && !BSP_SD_ENABLE
+#error "APP_SD_ENABLE requires BSP_SD_ENABLE=1"
+#endif
 #if APP_OFFLINE_ENABLE && !APP_DIAG_ENABLE
 #error "依赖缺失：APP_OFFLINE_ENABLE 依赖 APP_DIAG_ENABLE=1"
 #endif
@@ -125,11 +134,16 @@
 #define APP_WIFI_ENABLE         0   /* WiFi上报任务（ESP8266连路由器+TCP上报温湿度，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1） */
 #define APP_MQTT_ENABLE         1   /* MQTT上云任务（ESP8266+Paho MQTT连接云平台，受APP_TASKS_ENABLE约束，依赖BSP_ESP8266_ENABLE=1，与APP_WIFI_ENABLE互斥） */
 #define APP_CONN_ENGINE_ENABLE  1   /* 连接引擎（app_conn_engine）：把MQTT连接状态注册为plat_conn连接器并周期刷新（依赖PLAT_CONN_ENABLE+APP_MQTT_ENABLE） */
+#define APP_BT24_ENABLE         1   /* 蓝牙透传任务（BT24Task）：连接后周期上报传感器快照JSON + 解析小程序下行命令（QUERY/RELAY/LED/PING/BEEP），依赖BSP_BT24_ENABLE，与MQTT共用业务入口 */
 #define APP_PLAT_TASK_ENABLE    1   /* 平台服务任务（PlatSvcTask）：周期plat_devmgr_process_all+连接器状态刷新（依赖PLAT_DEVMGR_ENABLE） */
 #define APP_WATCHDOG_ENABLE     1   /* 多任务心跳看门狗任务（所有关键任务心跳正常才喂狗，任务卡死自动复位；依赖BSP_IWDG_ENABLE=1，移植自v2.2a） */
 #define APP_MODBUS_ENABLE       0   /* Modbus主从一体任务——新板PB1被LCD背光上拉(R13 15K)占用，毕设主线为MQTT云，停用 */
 #define APP_EEPROM_ENABLE       0   /* EEPROM配置存取模块（依赖BSP_AT24C02_ENABLE）——新板无AT24C02，停用 */
-#define APP_HC_SR04_ENABLE      0   /* 超声波采集任务（周期测量+串口打印+协议上报+可选LED控制，受APP_TASKS_ENABLE约束，依赖BSP_HC_SR04_ENABLE=1） */
+#define APP_HC_SR04_ENABLE      0
+#define APP_SD_ENABLE           1   /* SD data storage task: periodic diag snapshot -> CSV (depends BSP_SD_ENABLE=1) */
+
+/* 串口1(UART1)调试打印过滤：1=只输出 [SD] 打印（调 SD 卡用，其余模块静默）；0=默认集合(MQTT/WiFi/ESP8266/BT24/SD/ALARM/INA226/I2C-Scan) */
+#define BSP_UART1_SD_ONLY       0   /* 超声波采集任务（周期测量+串口打印+协议上报+可选LED控制，受APP_TASKS_ENABLE约束，依赖BSP_HC_SR04_ENABLE=1） */
 
 /* ========== 调试开关 ========== */
 #define APP_HEX_CMD_DEBUG       0   /* hex帧调试打印：收到/发送hex帧时以十六进制文本打印到串口1（调试用，正式版关闭避免干扰二进制通信） */
@@ -137,6 +151,7 @@
 /* ========== MQTT/ESP8266 module printf switches (merged from v2.2a) ========== */
 #define BSP_ESP8266_UART1_PRINTF_ENABLE  1   /* BSP ESP8266 AT command printf */
 #define APP_MQTT_UART1_PRINTF_ENABLE     1   /* APP MQTT cloud task printf */
+#define APP_BT24_UART1_PRINTF_ENABLE     1   /* APP BT24 bluetooth task printf */
 #define PROTOCOL_MQTT_UART1_PRINTF_ENABLE 1  /* protocol layer mqtt_port printf */
 #define APP_WATCHDOG_UART1_PRINTF_ENABLE 1   /* APP watchdog task printf */
 
@@ -148,7 +163,8 @@
 #define APP_KEY_LED_ENABLE      0   /* 按键控LED（KEY0→LED1亮, KEY1→LED1灭, KEY2→LED2亮, KEY3→LED2灭） */
 #define APP_UART1_LED_ENABLE    0   /* 串口1指令控LED——随协议停用 */
 #define APP_UART3_LED_ENABLE    1   /* 串口3指令控LED（LED1ON/LED1OFF/LED2ON/LED2OFF/ALLON/ALLOFF，需先禁用ESP8266） */
-#define APP_WIFI_LED_ENABLE     1   /* WiFi远程控LED（TCP服务器端发送LED1ON等指令，经ESP8266+IPD解析后执行） */
+#define APP_WIFI_LED_ENABLE     1   /* WiFi远程控LED（TCP服务器端发送LED1ON等指令，经ESP8266+IPD解析后执行）；
+  仅 APP_WIFI_ENABLE=1 时生效（当前 APP_WIFI_ENABLE=0，MQTT 模式请用云端 LED_Control 命令） */
 #define APP_LIGHT_LED_ENABLE    0   /* 光敏传感器控LED（暗光→双灯亮, 中等光→LED2亮, 强光→双灯灭） */
 #define APP_DHT11_LED_ENABLE    0   /* 温湿度传感器控LED（高温→LED1+LED2亮, 高湿→LED3+LED4亮） */
 #define APP_HC_SR04_LED_ENABLE  0   /* 超声波控LED（距离小于阈值→LED1亮，障碍物报警） */

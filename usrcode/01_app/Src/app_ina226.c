@@ -14,6 +14,7 @@
 #endif
 #include "app_ina226.h"
 #include "cmsis_os.h"
+#include <stdio.h>
 
 /* ==========================================================================
  *  INA226 采集任务（仅在模块启用时编译）
@@ -133,6 +134,23 @@ void APP_INA226_Task(void *argument)
             if (s_i2c_fail_count >= 5U) {
                 BSP_UART1_Printf("[INA226] I2C failed %u times, bus recovering...\r\n",
                                  (unsigned)s_i2c_fail_count);
+                /* 诊断：探测 0x40~0x47 全部常见地址，区分"模块不在总线"与"总线时序问题"
+                 * 注意：必须整行拼好一次 Printf，逐段 Printf 会被 UART1 过滤各自拦截 */
+                {
+                    uint8_t i;
+                    char probe_buf[96];
+                    int pos = snprintf(probe_buf, sizeof(probe_buf), "[INA226] probe");
+                    for (i = 0x40U; i <= 0x47U; i++) {
+                        if (BSP_I2C_Soft_Probe(i) == 0U) {
+                            pos += snprintf(probe_buf + pos, sizeof(probe_buf) - (size_t)pos,
+                                            " 0x%02X=OK", (unsigned)i);
+                        } else {
+                            pos += snprintf(probe_buf + pos, sizeof(probe_buf) - (size_t)pos,
+                                            " 0x%02X=NO", (unsigned)i);
+                        }
+                    }
+                    BSP_UART1_Printf("%s\r\n", probe_buf);
+                }
                 BSP_I2C_Soft_Recover();
                 s_i2c_fail_count = 0U;
             }

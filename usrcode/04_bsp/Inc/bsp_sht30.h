@@ -4,8 +4,8 @@
  * @brief   SHT30 温湿度传感器驱动头文件 — 软件I2C（共享总线 bsp_i2c_soft）
  *
  *  硬件连接：
- *    SDA -> PB9（板载IIC排针 SDA，与 AT24C02 同总线）
- *    SCL -> PB8（板载IIC排针 SCL）
+ *    SDA -> PB7（共享I2C总线 SDA）
+ *    SCL -> PB6（共享I2C总线 SCL）
  *    ADDR-> GND（7位地址 = 0x44）
  *
  *  芯片规格（Sensirion SHT30）：

@@ -29,6 +29,9 @@
 #include "main.h"
 #include "usart.h"
 #include "dma.h"
+#if BSP_BT24_ENABLE
+#include "bsp_bt24.h"
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -167,10 +170,19 @@ void BSP_UART1_Printf(const char *fmt, ...)
         if (n >= (int)sizeof(buf)) {
             n = (int)sizeof(buf) - 1;
         }
-        /* 过滤：只保留 WiFi/MQTT/ESP8266 相关打印 */
-        if (strstr(buf, "MQTT") != NULL || strstr(buf, "WiFi") != NULL || strstr(buf, "ESP8266") != NULL || strstr(buf, "ALARM] Temp") != NULL) {
+        /* 调试过滤（开关 BSP_UART1_SD_ONLY 见 module_cfg.h）：
+         *   1 = 只输出 [SD] / [WDT] / [RTOS] 打印（WDT/RTOS 仅在异常时出现，用于定位
+         *       是哪个任务卡死导致看门狗复位，平时不刷屏）；
+         *   0 = 默认集合：MQTT / WiFi / ESP8266 / BT24 / [SD] / ALARM / INA226 / I2C-Scan */
+#if BSP_UART1_SD_ONLY
+        if (strstr(buf, "[SD]") != NULL || strstr(buf, "[WDT]") != NULL || strstr(buf, "[RTOS]") != NULL) {
             BSP_UART1_Send((const uint8_t *)buf, (uint32_t)n);
         }
+#else
+        if (strstr(buf, "MQTT") != NULL || strstr(buf, "WiFi") != NULL || strstr(buf, "ESP8266") != NULL || strstr(buf, "BT24") != NULL || strstr(buf, "[SD]") != NULL || strstr(buf, "ALARM] Temp") != NULL || strstr(buf, "INA226") != NULL || strstr(buf, "I2C-Scan") != NULL) {
+            BSP_UART1_Send((const uint8_t *)buf, (uint32_t)n);
+        }
+#endif
     }
 }
 
@@ -297,7 +309,7 @@ void BSP_UART3_Printf(const char *fmt, ...)
  *  触发时机：接收溢出(ORE)、DMA错误等。此时HAL已停止接收并复位
  *  RxState=READY，这里统一重启DMA接收，并丢弃残留数据，恢复链路。
  * ========================================================================== */
-#if BSP_UART1_ENABLE || BSP_UART3_ENABLE
+#if BSP_UART1_ENABLE || BSP_UART3_ENABLE || BSP_BT24_ENABLE
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
 #if BSP_UART1_ENABLE
@@ -317,5 +329,12 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         BSP_UART3_StartRxDma();
     }
 #endif /* BSP_UART3_ENABLE */
+
+#if BSP_BT24_ENABLE
+    if (huart->Instance == USART2) {
+        __HAL_UART_DISABLE_IT(&huart2, UART_IT_IDLE);
+        BSP_BT24_UartErrorRecover();   /* 重启DMA接收 + 清空残留 + 重新使能IDLE */
+    }
+#endif /* BSP_BT24_ENABLE */
 }
-#endif /* BSP_UART1_ENABLE || BSP_UART3_ENABLE */
+#endif /* BSP_UART1_ENABLE || BSP_UART3_ENABLE || BSP_BT24_ENABLE */

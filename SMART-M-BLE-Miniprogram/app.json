@@ -1,0 +1,20 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#1f6feb",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "SMART-M 蓝牙监控",
+    "backgroundColor": "#f5f6fa",
+    "backgroundTextStyle": "light"
+  },
+  "permission": {
+    "scope.bluetooth": {
+      "desc": "用于连接 BT24 蓝牙模块，读取电机运行数据并远程控制"
+    }
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

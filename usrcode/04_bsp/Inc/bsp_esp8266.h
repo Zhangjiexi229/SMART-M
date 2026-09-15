@@ -118,7 +118,7 @@ int8_t BSP_ESP8266_IsTCPConnected(void);
 ESP8266_Status_t BSP_ESP8266_TCPClose(void);
 uint8_t           BSP_ESP8266_IsTCPClosed(void);   /* 纯内存查询，不发AT */
 void              BSP_ESP8266_ClearClosedFlag(void);
-uint8_t           BSP_ESP8266_IsWiFiConnected(void);      /* query WiFi link: AT+CIPSTATUS STATUS:5 => lost */
+int8_t            BSP_ESP8266_IsWiFiConnected(void);      /* 1=online, 0=lost(STATUS:5), -1=query failed */
 uint8_t           BSP_ESP8266_IsWiFiClosed(void);         /* async "WIFI DISCONNECT" event received */
 void              BSP_ESP8266_ClearWiFiClosedFlag(void);  /* clear async WiFi-lost flag */
 

@@ -4,8 +4,8 @@
  * @brief   QMI8658A 六轴IMU驱动头文件 — 软件I2C（共享总线 bsp_i2c_soft）
  *
  *  硬件连接（**本模块**）：
- *    SDA -> PB9（板载IIC排针 SDA）
- *    SCL -> PB8（板载IIC排针 SCL）
+ *    SDA -> PB7（共享I2C总线 SDA）
+ *    SCL -> PB6（共享I2C总线 SCL）
  *    AD0/SA0 -> 板上固定接地（无引线）→ 7位地址 = 0x6B
  *    INT1/INT2 -> 悬空（本驱动轮询读取，不用中断）
  *

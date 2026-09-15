@@ -4,12 +4,13 @@
  * @brief   INA226 电源监测驱动实现 — 共享软件I2C（bsp_i2c_soft）
  *
  *  ▍换算公式（TI INA226）：
- *    bus_mv    = BUS_VOLTAGE_raw * 1.25        （右移3位后无符号）
+ *    bus_mv    = BUS_VOLTAGE_raw * 1.25        （无符号，LSB=1.25mV，最大 40.96V）
  *    current_ma= CURRENT_raw * Current_LSB_A * 1000
  *    power_mw  = POWER_raw * 25 * Current_LSB_A * 1000
  *    shunt_uv  = SHUNT_VOLTAGE_raw * 2.5
  *
- *  本驱动按 Rshunt=0.1Ω、Current_LSB=0.5mA、CAL=102 配置。
+ *  本驱动按 Rshunt=0.01Ω（新模块 R010）、Current_LSB=0.25mA、CAL=2048 配置。
+ *  电流换算：Shunt(uV) / (Rshunt*1000) = I(mA)，0.01Ω 时直接 ÷10。
  ******************************************************************************
  */
 #include "module_cfg.h"
@@ -86,9 +87,9 @@ uint8_t BSP_INA226_Init(void)
         return 4U;   /* 回读 CFG 失败 */
     }
     BSP_INA226_LastCfgReadback = cfg;
-    /* 只比较有效位：bit15 RST + AVG[12:10] + VBUSCT[9:7] + VSHCT[6:4] + MODE[3:1]
-     * bit14/13/0 为保留位，读回值不保证为 0（实测本模块读回 bit14=1 → 0x43FE），不参与比较 */
-    if ((cfg & 0x8FF0U) != (INA226_CFG_DEFAULT & 0x8FF0U)) {
+    /* 只比较有效位：bit15 RST + AVG[11:9] + VBUSCT[8:6] + VSHCT[5:3] + MODE[2:0]
+     * bit14/13/12 为保留位，读回值不保证为 0（本模块实测 bit14 读回为 1），不参与比较 */
+    if ((cfg & 0x8FFFU) != (INA226_CFG_DEFAULT & 0x8FFFU)) {
         return 5U;   /* 回读有效位与写入不一致（模块异常/仿品） */
     }
 
@@ -117,15 +118,15 @@ uint8_t BSP_INA226_Read(BSP_INA226_Data_t *data)
         return 1U;
     }
 
-    /* 母线电压：右移3位（bit0~bit2无效）后 ×1.25mV */
-    data->bus_mv = (uint16_t)(((uint32_t)(raw_bus >> 3U) * 125U) / 100U);
+    /* 母线电压：寄存器值直接 ×1.25mV（LSB=1.25mV，最大 0x7FFF → 40.96V，无需右移） */
+    data->bus_mv = (uint16_t)(((uint32_t)raw_bus * 125U) / 100U);
 
     /* 分流电压：raw × 2.5uV（有符号） */
     data->shunt_uv = (int16_t)(((int32_t)(int16_t)raw_shunt * 25) / 10);
 
-    /* 电流：直接用 Shunt 电压算（Rshunt=0.1Ω，I=V/R）
-     * Shunt(uV) / 100 = I(mA) */
-    data->current_ma = (int16_t)(data->shunt_uv / 100);
+    /* 电流：直接用 Shunt 电压算（Rshunt=0.01Ω，I=V/R）
+     * Shunt(uV) / 10 = I(mA)   （0.1Ω 模块时为 /100） */
+    data->current_ma = (int16_t)(data->shunt_uv / 10);
 
     /* 功率：Bus(mV) * I(mA) / 1000 = P(mW) */
     data->power_mw = (uint16_t)(((uint32_t)data->bus_mv * (uint32_t)(data->current_ma > 0 ? data->current_ma : 0)) / 1000U);

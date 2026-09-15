@@ -70,7 +70,7 @@
 #define configMINIMAL_STACK_SIZE                 ((uint16_t)128)
 /* 堆大小：毕设新增 DisplayTask/AlarmTask/KeyMatrixTask + 断网补传300条快照，
  * 15KB 偏紧；F407 有 192KB RAM，扩到 20KB（若 CubeMX 重新生成需在 FreeRTOS 参数页同步） */
-#define configTOTAL_HEAP_SIZE                    ((size_t)20480)
+#define configTOTAL_HEAP_SIZE                    ((size_t)40960)   /* 原32768：新增BT24蓝牙任务后加大 */
 /* 栈溢出检测（方法2：任务切换时校验栈指针与首字节哨兵）与内存分配失败钩子，
  * 钩子实现见 app_tasks.c 末尾；发现问题后固件卡死闪烁LED1，便于调试定位 */
 #define configCHECK_FOR_STACK_OVERFLOW           2

@@ -1,0 +1,51 @@
+/* 全局样式 */
+page {
+  background: #f5f6fa;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.container {
+  padding: 24rpx;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f6feb;
+  margin-bottom: 16rpx;
+}
+
+.btn {
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  margin: 8rpx;
+}
+
+.btn-primary {
+  background: #1f6feb;
+  color: #fff;
+}
+
+.btn-green {
+  background: #2ea44f;
+  color: #fff;
+}
+
+.btn-red {
+  background: #d73a49;
+  color: #fff;
+}
+
+.btn-gray {
+  background: #eaecef;
+  color: #444;
+}

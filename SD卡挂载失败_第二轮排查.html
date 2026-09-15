@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD 卡第二轮排查 — 修复验证与剩余问题</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#f4f6f8; color:#1f2937; line-height:1.55; padding:28px 16px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  h1 { font-size:23px; font-weight:700; margin-bottom:6px; }
+  .sub { font-size:14px; color:#64748b; margin-bottom:22px; }
+  .verdict { background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #16a34a; border-radius:8px; padding:14px 16px; margin-bottom:24px; font-size:15px; }
+  .verdict b { color:#15803d; }
+  .verdict .warn { color:#b91c1c; }
+  .zone { background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .zone-tag { display:inline-block; font-size:13px; font-weight:700; color:#fff; border-radius:4px; padding:2px 10px; margin-bottom:12px; }
+  .z1 .zone-tag { background:#16a34a; } .z2 .zone-tag { background:#dc2626; } .z3 .zone-tag { background:#d97706; } .z4 .zone-tag { background:#2563eb; }
+  .zone h2 { font-size:17px; margin-bottom:14px; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { border:1px solid #e2e8f0; padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; }
+  .ok { color:#15803d; font-weight:700; } .bad { color:#b91c1c; font-weight:700; }
+  code { font-family:Consolas,monospace; font-size:12.5px; background:#eef2f7; border-radius:4px; padding:1px 5px; }
+  .chain { display:flex; flex-direction:column; gap:0; margin:8px 0; }
+  .node { border:1.5px solid #94a3b8; background:#f8fafc; border-radius:8px; padding:9px 13px; font-size:13.5px; }
+  .node.hot { border-color:#b91c1c; background:#fef2f2; }
+  .node b { color:#0f172a; } .node.hot b { color:#b91c1c; }
+  .arrow { text-align:center; color:#64748b; font-size:15px; padding:1px 0; }
+  .math { background:#fef3c7; border:1px solid #fde68a; border-radius:8px; padding:11px 14px; margin:12px 0; font-size:13.5px; }
+  .math b { color:#92400e; }
+  .fixlist { display:flex; flex-direction:column; gap:10px; }
+  .fix { border:1px solid #bfdbfe; background:#eff6ff; border-radius:8px; padding:11px 14px; font-size:14px; }
+  .fix.hw { border-color:#fde68a; background:#fffbeb; }
+  .fix b { color:#1e40af; } .fix.hw b { color:#92400e; }
+  .fix code { background:#dbeafe; } .fix.hw code { background:#fef3c7; }
+  .step { font-size:13px; color:#475569; margin-top:4px; }
+  .foot { font-size:12px; color:#94a3b8; text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SD 卡第二轮排查 — 修复验证与剩余问题</h1>
+  <div class="sub">SMART-M 项目 · 烧录修复固件后的串口日志 · 2026-09-14</div>
+
+  <div class="verdict"><b>第一处根因（数据超时 0x40）已确认修复：</b>容量打印恢复正常（29818 MB），且 <span class="warn">挂载从“永远失败”变成“间歇成功”（fr=0 出现）</span>——说明扇区读取已能完整完成。<br><br>
+  <b>剩余问题：</b>读扇区约半数失败，新错误码 <span class="warn">err=0x20 = RX_OVERRUN（接收 FIFO 溢出）</span>——数据已经开始传输，但主机没有及时排空 FIFO。指向<b>实时性（任务被抢占）＋电气余量（无外部上拉）</b>两层原因。</div>
+
+  <!-- Zone 1 修复验证 -->
+  <div class="zone z1">
+    <span class="zone-tag">① 修复验证（对比）</span>
+    <h2>第一轮修改的验证结果</h2>
+    <table>
+      <tr><th>项目</th><th>修复前</th><th>修复后</th><th>判定</th></tr>
+      <tr><td>容量打印</td><td>card ok: 1146 MB（uint32 溢出误报）</td><td>card ok: 29818 MB（29.1GiB 真实值）</td><td class="ok">✓ 已修复</td></tr>
+      <tr><td>挂载结果</td><td>mount fr=1 恒定，永不成功</td><td>mount fr=0 间歇出现（读扇区已能完成）</td><td class="ok">✓ 超时修复生效</td></tr>
+      <tr><td>读扇区错误</td><td>err=8（DTIMEOUT，数据根本没开始发）</td><td>err=0x20（RX_OVERRUN，数据发了但主机没接住）</td><td class="bad">剩余问题</td></tr>
+      <tr><td>mkdir / 开日志</td><td>—（挂载从未成功）</td><td>mkdir fail fr=1、open log fail（写路径同样失败）</td><td class="bad">被同一链路问题阻断</td></tr>
+    </table>
+  </div>
+
+  <!-- Zone 2 新错误解读 -->
+  <div class="zone z2">
+    <span class="zone-tag">② 新错误解读</span>
+    <h2>err=0x20 与 STA=0x22A000 说明什么</h2>
+    <div class="math">
+      <code>err=0x20</code> = <b>SDMMC_ERROR_RX_OVERRUN（接收 FIFO 溢出）</b>：DPSM 在收数据，但 RX FIFO 已满、主机还没把数据读走，数据被丢弃。<br>
+      <code>sta=0x22A000</code> 解码：<b>RXACT</b>（正在收数）＋ <b>RXFIFOF</b>（FIFO 满）＋ <b>RXFIFOHF</b>（FIFO 半满）＋ <b>RXDAVL</b>（FIFO 有数据）—— 和“数据来了但排空不及时”完全吻合。
+    </div>
+    <div class="chain">
+      <div class="node">卡收到 CMD17，开始向 D0 发送 512 字节数据（400kHz 下总时长 ≈ <b>10.2ms</b>）</div>
+      <div class="arrow">↓</div>
+      <div class="node">RX FIFO（32 字 = 128 字节）半满窗口 ≈ <b>1.28ms</b>，轮询循环必须在这个时间内读走 ≥64 字节</div>
+      <div class="arrow">↓</div>
+      <div class="node hot"><b>SdLogTask 是 Normal 优先级</b>，与 WiFi/MQTT/多路传感器任务同优先级时间片轮转（1ms tick），失败路径还会阻塞式串口打印（一条日志约 4ms）</div>
+      <div class="arrow">↓</div>
+      <div class="node hot"><b>被其他任务抢占超过 ~1.28ms → RX FIFO 溢出 → err=0x20</b>（间歇性，取决于当时谁在跑）</div>
+    </div>
+  </div>
+
+  <!-- Zone 3 机制/根因 -->
+  <div class="zone z3">
+    <span class="zone-tag">③ 根因定位</span>
+    <h2>两层原因，两层都要处理</h2>
+    <table>
+      <tr><th>层次</th><th>机制</th><th>证据</th></tr>
+      <tr><td><b>实时性（软件）</b></td><td>轮询读必须每 ~1.28ms 排空一次 FIFO；SD 任务被同/高优先级任务或阻塞打印抢占即溢出</td><td>错误随机分布在 blk=0 / 2049 / 18432；同一扇区重试后能成功</td></tr>
+      <tr><td><b>电气余量（硬件）</b></td><td>板上 SDIO 无外部上拉（代码注释明确说明），仅靠内部弱上拉；信号边沿/噪声余量差</td><td>开发者注释：提速到 12/24MHz 时数据读取即不稳定（fr=1）；400kHz 下仍间歇失败</td></tr>
+    </table>
+  </div>
+
+  <!-- Zone 4 下一步 -->
+  <div class="zone z4">
+    <span class="zone-tag">④ 下一步</span>
+    <h2>软件缓解（可立即做）＋ 硬件根本修复</h2>
+    <div class="fixlist">
+      <div class="fix"><b>1. SdLogTask 优先级 Normal → AboveNormal</b>：高于 WiFi/MQTT/传感器，避免被同优先级任务抢占超过 FIFO 窗口。<code>app_tasks.c</code> 一处。</div>
+      <div class="fix"><b>2. 读扇区失败自动重试 1 次</b>：日志显示间歇错误重试即成功（mount 第二次尝试即 fr=0），在 <code>BSP_SD_ReadBlocks</code> 失败时重试一次，能消化大部分偶发溢出。</div>
+      <div class="fix"><b>3. 失败打印节流</b>：现在每次读失败都阻塞打印（约 4ms），既拖慢任务又干扰时序，改为计数节流（如每 10 次打一条）。</div>
+      <div class="fix hw"><b>4.（硬件，根本）加外部上拉 + 供电去耦</b>：CMD(PD2)/D0-D3(PC8-11)/CK(PC12) 各加 <code>10kΩ → 3.3V</code>；卡座 VDD 就近加 <code>10µF + 100nF</code>；缩短杜邦线、检查 GND 连续性。</div>
+      <div class="fix hw"><b>5.（硬件，排除法）换一张正品卡</b>：当前是 32GB 卡（29.1GiB 合理），但无法排除卡本身质量问题；换 8/16GB 品牌卡交叉验证。</div>
+    </div>
+  </div>
+
+  <div class="foot">依据：修复后串口日志 + stm32f4xx_ll_sdmmc.h 错误码定义 + stm32f407xx.h STA 位定义 + app_tasks.c 任务优先级</div>
+</div>
+</body>
+</html>

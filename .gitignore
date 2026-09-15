@@ -15,8 +15,6 @@ Desktop.ini
 *.o
 *.d
 
-# Local debugging / temp files
-.diag/
-chk_at.png
-docs_check_image.png
-.tmp_wifi_patch.py
+# IDE workspace state
+.settings/
+.clangd

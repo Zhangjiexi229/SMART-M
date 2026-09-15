@@ -22,7 +22,9 @@ typedef enum {
     WDT_TASK_ALARM       = 4,   /* 告警联动 */
     WDT_TASK_KEY_MATRIX  = 5,   /* 4x4 矩阵键盘 */
     WDT_TASK_OLED        = 6,   /* OLED 显示 */
-    WDT_TASK_COUNT       = 7
+    WDT_TASK_SD          = 7,   /* SD 数据存储 */
+    WDT_TASK_BT24        = 8,   /* BT24 蓝牙透传任务 */
+    WDT_TASK_COUNT       = 9
 } WDT_TaskID_t;
 
 /**

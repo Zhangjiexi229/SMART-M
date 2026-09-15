@@ -1,0 +1,103 @@
+<view class="container">
+
+  <!-- 状态栏 -->
+  <view class="card">
+    <view class="status-row">
+      <text class="status-dot {{adapterReady ? 'dot-green' : 'dot-gray'}}"></text>
+      <text>蓝牙: {{adapterReady ? '已就绪' : '未打开'}}</text>
+      <text class="status-dot {{connected ? 'dot-green' : 'dot-gray'}}" style="margin-left:24rpx"></text>
+      <text>连接: {{connected ? '已连接' : '未连接'}}</text>
+      <text class="status-rssi" wx:if="{{connected}}">RSSI {{rssi}} dBm</text>
+    </view>
+    <view class="status-row" wx:if="{{deviceName}}">
+      <text>设备: {{deviceName}}</text>
+      <text class="status-time">更新 {{lastUpdate}}</text>
+    </view>
+    <view class="btn-row">
+      <button class="btn btn-primary" size="mini" bindtap="onOpenAdapter" wx:if="{{!adapterReady}}">打开蓝牙</button>
+      <button class="btn btn-primary" size="mini" bindtap="onStartScan" wx:if="{{adapterReady && !connected}}">{{discovering ? '扫描中...' : '扫描设备'}}</button>
+      <button class="btn btn-red" size="mini" bindtap="onDisconnect" wx:if="{{connected}}">断开连接</button>
+      <button class="btn btn-gray" size="mini" bindtap="onClearLog" wx:if="{{logs.length}}">清空日志</button>
+    </view>
+  </view>
+
+  <!-- 设备列表 -->
+  <view class="card" wx:if="{{adapterReady && !connected}}">
+    <view class="card-title">附近设备（BT24）</view>
+    <view wx:if="{{devices.length === 0}}" class="empty">暂无设备，请确认模块已上电、靠近手机</view>
+    <view class="device-item" wx:for="{{devices}}" wx:key="deviceId" bindtap="onConnect" data-id="{{item.deviceId}}">
+      <view class="device-name">{{item.name}}</view>
+      <view class="device-meta">{{item.deviceId}} · RSSI {{item.rssi}}</view>
+    </view>
+  </view>
+
+  <!-- 遥测数据 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="card-title">实时数据</view>
+    <view class="grid">
+      <view class="cell">
+        <text class="cell-value">{{t}}</text>
+        <text class="cell-label">温度 ℃</text>
+      </view>
+      <view class="cell">
+        <text class="cell-value">{{h}}</text>
+        <text class="cell-label">湿度 %RH</text>
+      </view>
+      <view class="cell">
+        <text class="cell-value">{{v}}</text>
+        <text class="cell-label">振动 g</text>
+      </view>
+      <view class="cell">
+        <text class="cell-value">{{i}}</text>
+        <text class="cell-label">电流 A</text>
+      </view>
+      <view class="cell">
+        <text class="cell-value">{{u}}</text>
+        <text class="cell-label">电压 V</text>
+      </view>
+      <view class="cell">
+        <text class="cell-value">{{p}}</text>
+        <text class="cell-label">功率 W</text>
+      </view>
+    </view>
+    <view class="state-row">
+      <text class="tag {{relay ? 'tag-green' : 'tag-gray'}}">继电器 {{relay ? 'ON' : 'OFF'}}</text>
+      <text class="tag {{alarm ? 'tag-red' : 'tag-green'}}">告警 {{alarm ? '触发' : '正常'}}</text>
+      <text class="tag {{diag ? 'tag-orange' : 'tag-green'}}">诊断 {{diag}}</text>
+      <text class="tag">故障掩码 0x{{mask}}</text>
+    </view>
+  </view>
+
+  <!-- 控制区 -->
+  <view class="card" wx:if="{{connected}}">
+    <view class="card-title">控制</view>
+    <view class="btn-row">
+      <button class="btn btn-primary" size="mini" bindtap="onQuery">查询数据</button>
+      <button class="btn {{relay ? 'btn-red' : 'btn-green'}}" size="mini" bindtap="onRelayToggle">继电器 {{relay ? '断开' : '吸合'}}</button>
+      <button class="btn btn-gray" size="mini" bindtap="onBeep">蜂鸣器 200ms</button>
+    </view>
+    <view class="btn-row">
+      <text class="ctrl-label">LED 单灯（点亮）</text>
+      <button class="btn btn-gray" size="mini" data-index="1" bindtap="onLedToggle">LED1</button>
+      <button class="btn btn-gray" size="mini" data-index="2" bindtap="onLedToggle">LED2</button>
+      <button class="btn btn-gray" size="mini" data-index="3" bindtap="onLedToggle">LED3</button>
+      <button class="btn btn-gray" size="mini" data-index="4" bindtap="onLedToggle">LED4</button>
+    </view>
+    <view class="btn-row">
+      <text class="ctrl-label">LED 位掩码</text>
+      <button class="btn btn-gray" size="mini" data-mask="15" bindtap="onLedMask">全亮</button>
+      <button class="btn btn-gray" size="mini" data-mask="0" bindtap="onLedMask">全灭</button>
+      <button class="btn btn-gray" size="mini" data-mask="5" bindtap="onLedMask">1+3</button>
+      <button class="btn btn-gray" size="mini" data-mask="10" bindtap="onLedMask">2+4</button>
+    </view>
+  </view>
+
+  <!-- 日志 -->
+  <view class="card" wx:if="{{logs.length}}">
+    <view class="card-title">通信日志</view>
+    <scroll-view scroll-y class="log-box">
+      <view wx:for="{{logs}}" wx:key="index" class="log-line">{{item}}</view>
+    </scroll-view>
+  </view>
+
+</view>

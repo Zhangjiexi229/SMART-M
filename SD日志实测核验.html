@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD 日志实测核验结果</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#f4f6f8; color:#1f2937; line-height:1.55; padding:28px 16px; }
+  .wrap { max-width:960px; margin:0 auto; }
+  h1 { font-size:23px; font-weight:700; margin-bottom:6px; }
+  .sub { font-size:14px; color:#64748b; margin-bottom:22px; }
+  .verdict { background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #16a34a; border-radius:8px; padding:14px 16px; margin-bottom:24px; font-size:15px; }
+  .verdict b { color:#15803d; }
+  .verdict .warn { color:#b91c1c; }
+  .zone { background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .zone h2 { font-size:17px; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { border:1px solid #e2e8f0; padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; }
+  .ok { color:#15803d; font-weight:700; } .bad { color:#b91c1c; font-weight:700; } .mid { color:#b45309; font-weight:700; }
+  code { font-family:Consolas,monospace; font-size:12px; background:#eef2f7; border-radius:3px; padding:0 4px; }
+  .warn { border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:11px 14px; font-size:13.5px; margin-top:14px; }
+  .warn b { color:#92400e; }
+  .warn2 { border:1px solid #fecaca; background:#fef2f2; border-radius:8px; padding:11px 14px; font-size:13.5px; margin-top:14px; }
+  .warn2 b { color:#991b1b; }
+  .foot { font-size:12px; color:#94a3b8; text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SD 日志实测核验结果</h1>
+  <div class="sub">SMART-M 项目 · 直接读取 F:\SMART\LOG0001.CSV / LOG0002.CSV · 2026-09-14</div>
+
+  <div class="verdict"><b>格式验证通过：8 列、列序、精度、行尾全部正确，无乱码、无空行、无越界值。</b><br>
+  但实测数据暴露两个问题：<span class="warn">① INA226 三列（电流/电压/功率）全为 0；② 行间隔约 10s，而设计为 5s。</span></div>
+
+  <div class="zone">
+    <h2>文件统计</h2>
+    <table>
+      <tr><th>文件</th><th>大小</th><th>数据行数</th><th>uptime 区间</th><th>来源</th></tr>
+      <tr><td>LOG0001.CSV</td><td>259 B</td><td>5 行</td><td>23–63 s</td><td>第二轮固件时期的一次成功会话</td></tr>
+      <tr><td>LOG0002.CSV</td><td>1176 B</td><td>27 行</td><td>22–293 s</td><td>当前第三轮固件会话</td></tr>
+    </table>
+  </div>
+
+  <div class="zone">
+    <h2>逐列实测</h2>
+    <table>
+      <tr><th>列</th><th>实测范围</th><th>判定</th><th>说明</th></tr>
+      <tr><td>uptime_s</td><td>22 → 293</td><td class="ok">✓ 正常</td><td>单调递增</td></tr>
+      <tr><td>temp_c</td><td>27.1 – 27.4 ℃</td><td class="ok">✓ 合理</td><td>SHT30 室温</td></tr>
+      <tr><td>hum_rh</td><td>37.8 – 39.5 %RH</td><td class="ok">✓ 合理</td><td>SHT30</td></tr>
+      <tr><td>vib_g</td><td>1.019 – 1.049 g</td><td class="ok">✓ 合理</td><td>静态约 1g + 噪声，符合 QMI8658</td></tr>
+      <tr><td>current_a</td><td><b>0.000</b></td><td class="bad">✗ 异常</td><td rowspan="3">INA226 未提供有效读数：读失败时代码显式写 0（app_ina226.c）——需查 I2C 接线/供电/任务</td></tr>
+      <tr><td>voltage_v</td><td><b>0.00</b></td><td class="bad">✗ 异常</td></tr>
+      <tr><td>power_w</td><td><b>0.000</b></td><td class="bad">✗ 异常</td></tr>
+      <tr><td>alarm</td><td>0</td><td class="ok">✓ 正常</td><td>无报警</td></tr>
+    </table>
+  </div>
+
+  <div class="zone">
+    <h2>两个发现</h2>
+    <div class="warn2"><b>① INA226 三列全为 0</b> —— 格式没问题，是数据源问题：代码在 INA226 读取失败时向快照写 0。串口应能看到 <code>[INA226] Read FAILED</code> 或 <code>I2C failed...bus recovering</code>。检查：INA226 是否供电/接线、I2C 地址(0x40?)、电机负载是否上电。</div>
+    <div class="warn"><b>② 行间隔约 10s（设计 5s）</b> —— 代码路径已核验：HAL 时基 1ms、FreeRTOS tick 1kHz、延时常量 5000，延时本身应为 5s。多出的 ~5s 最可能来自每次 <code>f_sync</code> 落盘耗时（FAT 目录/扇区写入慢，卡写入速度差或触发重试）。与这张卡整体偏弱的表现一致。<b>建议换正品卡后观察是否回到 5s</b>；若需要，可在固件里打印 f_sync 耗时确认。</div>
+  </div>
+
+  <div class="foot">依据：F:\SMART 两个 CSV 文件实测 + app_ina226.c / app_sd.c / app_watchdog.c / FreeRTOSConfig.h / stm32f4xx_hal_timebase_tim.c</div>
+</div>
+</body>
+</html>

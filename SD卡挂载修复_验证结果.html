@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD 卡挂载修复 — 验证结果</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif; background:#f4f6f8; color:#1f2937; line-height:1.55; padding:28px 16px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  h1 { font-size:23px; font-weight:700; margin-bottom:6px; }
+  .sub { font-size:14px; color:#64748b; margin-bottom:22px; }
+  .verdict { background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #16a34a; border-radius:8px; padding:14px 16px; margin-bottom:24px; font-size:15px; }
+  .verdict b { color:#15803d; }
+  .zone { background:#fff; border-radius:10px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+  .zone h2 { font-size:17px; margin-bottom:14px; }
+  .tl { position:relative; padding-left:26px; }
+  .tl::before { content:""; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:#cbd5e1; }
+  .tl-item { position:relative; padding:0 0 22px 14px; }
+  .tl-item::before { content:""; position:absolute; left:-24px; top:4px; width:12px; height:12px; border-radius:50%; background:#94a3b8; border:2px solid #fff; box-shadow:0 0 0 2px #94a3b8; }
+  .tl-item.done::before { background:#16a34a; box-shadow:0 0 0 2px #16a34a; }
+  .tl-item.fail::before { background:#b91c1c; box-shadow:0 0 0 2px #b91c1c; }
+  .tl-item .stage { font-size:13px; font-weight:700; margin-bottom:2px; }
+  .tl-item .stage .tag { display:inline-block; font-size:11.5px; color:#fff; border-radius:3px; padding:1px 7px; margin-right:6px; }
+  .tag.r1 { background:#b91c1c; } .tag.r2 { background:#d97706; } .tag.r3 { background:#16a34a; }
+  .tl-item .log { font-family:Consolas,monospace; font-size:12.5px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:5px; padding:6px 9px; margin:6px 0; word-break:break-all; }
+  .tl-item .fix { font-size:13px; color:#475569; }
+  .tl-item .fix code { background:#eef2f7; border-radius:3px; padding:0 4px; font-family:Consolas,monospace; font-size:12px; }
+  .now { background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:12px 14px; margin-bottom:20px; font-size:14px; }
+  .now code { font-family:Consolas,monospace; font-size:13px; background:#d1fae5; border-radius:4px; padding:1px 6px; }
+  .warn { border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:11px 14px; font-size:13.5px; margin-top:14px; }
+  .warn b { color:#92400e; }
+  .foot { font-size:12px; color:#94a3b8; text-align:center; margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SD 卡挂载修复 — 验证结果</h1>
+  <div class="sub">SMART-M 项目 · 三轮排障 · 2026-09-14</div>
+
+  <div class="verdict"><b>目标达成：SD 卡挂载成功，日志文件已正常打开。</b>最新日志：<code>mount fr=0 t=21 ms</code> → <code>mounted, log=0:/SMART/LOG0002.CSV</code>，全程无读错误、无重试。</div>
+
+  <div class="zone">
+    <h2>三轮排障历程</h2>
+    <div class="tl">
+      <div class="tl-item fail">
+        <div class="stage"><span class="tag r1">第 1 轮</span>全量失败 — 软件 bug 定位</div>
+        <div class="log">[SD] card ok: 1146 MB（误报） / rd blk=0 err=8 / mount fr=1 恒定</div>
+        <div class="fix">根因：HAL 8 处 <code>DataTimeOut=0x40</code>（400kHz 下仅 160µs）→ 读扇区必超时。修复：改为 <code>0xFFFFFF</code>；顺带修复容量 uint32 溢出。</div>
+      </div>
+      <div class="tl-item fail">
+        <div class="stage"><span class="tag r2">第 2 轮</span>间歇成功 — 暴露链路问题</div>
+        <div class="log">card ok: 29818 MB（正确） / rd err=0x20 / mount fr=0 偶现 / mkdir fail</div>
+        <div class="fix">err=0x20 = RX 溢出：400kHz 下半满窗口仅 1.28ms，SD 任务 Normal 优先级被抢占 + 阻塞打印干扰。缓解：优先级提至 AboveNormal、读写各重试 1 次、失败打印节流。</div>
+      </div>
+      <div class="tl-item done">
+        <div class="stage"><span class="tag r3">第 3 轮</span>成功 — 验证通过</div>
+        <div class="log">[SD] mount fr=0 t=21 ms<br>[SD] mounted, log=0:/SMART/LOG0002.CSV</div>
+        <div class="fix">首次挂载即成功，日志文件编号正常递增（0002 = 0001 已存在），读写链路完整打通。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="zone">
+    <h2>当前状态与遗留事项</h2>
+    <div class="now">✅ 挂载成功 · 日志文件打开正常 · 无读错误无重试</div>
+    <div class="warn"><b>① 空闲堆偏低：6168 B</b>（SD 任务启动时打印）。当前够用，但系统任务较多，后续加功能或加日志字段时注意堆水位，必要时调大 <code>FreeRTOSConfig.h</code> 的堆大小。<br>
+    <b>② 硬件可靠性（治本项，仍建议做）：</b>CMD/D0-D3/CK 加 10kΩ 上拉到 3.3V、卡座 VDD 加 10µF+100nF 去耦、换正品卡交叉验证——当前靠软件重试兜底，硬件余量做好后会更稳。</div>
+  </div>
+
+  <div class="foot">依据：三轮串口日志 + 工程源码修改记录（stm32f4xx_hal_sd.c / bsp_sd.c / bsp_sd.h / app_tasks.c）</div>
+</div>
+</body>
+</html>
